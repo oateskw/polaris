@@ -108,13 +108,20 @@ def generate_content(
         if image:
             console.print("\n[bold blue]Generating image...[/bold blue]")
             from polaris.services.ai import ImageGenerator, upload_to_github
+            from polaris.services.ai.image_generator import extract_hook
             from pathlib import Path
+
+            # Extract hook from caption for text overlay
+            hook_text = extract_hook(result.caption)
+            console.print(f"[dim]Text overlay: {hook_text}[/dim]")
 
             img_generator = ImageGenerator()
             try:
                 generated_image = img_generator.generate_image(
                     topic=topic,
                     caption_summary=result.caption[:200],
+                    text_overlay=hook_text,
+                    text_position="top",
                 )
                 console.print(f"[green]Image generated:[/green] {generated_image.local_path}")
                 console.print(f"[dim]Prompt used: {generated_image.prompt}[/dim]")

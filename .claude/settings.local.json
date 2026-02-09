@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(polaris init:*)",
+      "Bash(polaris content list:*)",
+      "Bash(polaris content generate:*)",
+      "Bash(polaris accounts add:*)",
+      "Bash(python:*)",
+      "Bash(polaris accounts list:*)",
+      "Bash(polaris status:*)",
+      "Bash(polaris content show:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(curl:*)",
+      "Bash(pip install:*)"
+    ]
+  }
+}

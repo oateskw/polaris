@@ -122,6 +122,81 @@ def run(
 
 
 @app.command()
+def publish(
+    content_id: int = typer.Argument(..., help="Content ID to publish"),
+    account_id: int = typer.Option(None, "--account", "-a", help="Account ID (uses first active if not specified)"),
+):
+    """Publish content to Instagram immediately."""
+    settings = get_settings()
+    session = get_session()
+
+    from polaris.repositories import AccountRepository, ContentRepository
+    from polaris.services.instagram.client import InstagramClient
+    from polaris.services.instagram.publisher import InstagramPublisher, PublishError
+    from polaris.models.content import ContentStatus
+
+    content_repo = ContentRepository(session)
+    account_repo = AccountRepository(session)
+
+    # Get the content
+    content = content_repo.get(content_id)
+    if not content:
+        console.print(f"[red]Error:[/red] Content {content_id} not found.")
+        session.close()
+        raise typer.Exit(1)
+
+    if not content.media_url:
+        console.print(f"[red]Error:[/red] Content has no media URL set.")
+        console.print("Use 'polaris content edit --media-url <url>' to set one.")
+        session.close()
+        raise typer.Exit(1)
+
+    # Get the account
+    if account_id:
+        account = account_repo.get(account_id)
+    else:
+        accounts = account_repo.get_active_accounts()
+        account = accounts[0] if accounts else None
+
+    if not account:
+        console.print("[red]Error:[/red] No Instagram account found.")
+        console.print("Run 'polaris accounts add' to connect an account.")
+        session.close()
+        raise typer.Exit(1)
+
+    console.print(f"[bold blue]Publishing content #{content_id} to @{account.username}...[/bold blue]")
+    console.print(f"Media URL: {content.media_url}")
+
+    try:
+        client = InstagramClient(
+            access_token=account.access_token,
+            instagram_user_id=account.instagram_user_id,
+        )
+        publisher = InstagramPublisher(client)
+
+        # Publish
+        media_id = publisher.publish_content(content)
+
+        # Update content status
+        content_repo.mark_published(content_id, instagram_media_id=media_id)
+        content_repo.commit()
+
+        console.print(f"\n[bold green]Published successfully![/bold green]")
+        console.print(f"Instagram Media ID: {media_id}")
+
+    except PublishError as e:
+        console.print(f"[red]Publish error:[/red] {e}")
+        content_repo.mark_failed(content_id)
+        content_repo.commit()
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    finally:
+        session.close()
+
+
+@app.command()
 def status():
     """Show the current status of Polaris."""
     settings = get_settings()

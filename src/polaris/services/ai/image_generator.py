@@ -1,5 +1,6 @@
 """AI-powered image generation using Replicate."""
 
+import io
 import re
 import subprocess
 import time
@@ -8,6 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
+from PIL import Image, ImageDraw, ImageFont
 
 from polaris.config import Settings, get_settings
 from polaris.services.ai.claude_client import ClaudeClient
@@ -35,8 +37,171 @@ Requirements:
 - No text in the image (text will be added separately)
 - High-quality digital art or 3D render style
 - Good for Instagram square format (1:1 aspect ratio)
+- Leave some space at the top or center for text overlay
 
 Return ONLY the image prompt, nothing else. Keep it under 100 words."""
+
+
+def extract_hook(caption: str) -> str:
+    """Extract the first sentence/hook from a caption."""
+    # Remove any leading whitespace or newlines
+    caption = caption.strip()
+
+    # Try to find the first sentence ending with ? ! or .
+    match = re.match(r'^([^.!?]+[.!?])', caption)
+    if match:
+        hook = match.group(1).strip()
+        # If hook is too long, truncate at a reasonable point
+        if len(hook) > 80:
+            # Try to break at a natural point
+            words = hook.split()
+            truncated = []
+            length = 0
+            for word in words:
+                if length + len(word) + 1 > 75:
+                    break
+                truncated.append(word)
+                length += len(word) + 1
+            hook = ' '.join(truncated) + '...'
+        return hook
+
+    # Fallback: take first 60 chars
+    if len(caption) > 60:
+        return caption[:57] + '...'
+    return caption
+
+
+def add_text_overlay(
+    image_bytes: bytes,
+    text: str,
+    position: str = "top",
+    font_size: int = 48,
+) -> bytes:
+    """Add text overlay to an image.
+
+    Args:
+        image_bytes: Raw image bytes
+        text: Text to overlay
+        position: Where to place text ("top", "center", "bottom")
+        font_size: Base font size (will auto-adjust)
+
+    Returns:
+        Modified image as bytes
+    """
+    # Open image
+    img = Image.open(io.BytesIO(image_bytes))
+    img = img.convert("RGBA")
+    width, height = img.size
+
+    # Create overlay layer for semi-transparent background
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+
+    # Try to load a nice font, fall back to default
+    font = None
+    font_paths = [
+        "C:/Windows/Fonts/arialbd.ttf",  # Windows Arial Bold
+        "C:/Windows/Fonts/segoeui.ttf",  # Windows Segoe UI
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # Linux
+        "/System/Library/Fonts/Helvetica.ttc",  # macOS
+    ]
+
+    for font_path in font_paths:
+        try:
+            font = ImageFont.truetype(font_path, font_size)
+            break
+        except (OSError, IOError):
+            continue
+
+    if font is None:
+        font = ImageFont.load_default()
+        font_size = 20  # Default font is smaller
+
+    # Word wrap the text
+    max_width = int(width * 0.85)  # 85% of image width
+    lines = wrap_text(text, font, max_width, draw)
+
+    # Calculate text block dimensions
+    line_heights = []
+    line_widths = []
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font)
+        line_widths.append(bbox[2] - bbox[0])
+        line_heights.append(bbox[3] - bbox[1])
+
+    line_height = max(line_heights) if line_heights else font_size
+    line_spacing = int(line_height * 0.3)
+    total_text_height = len(lines) * line_height + (len(lines) - 1) * line_spacing
+
+    # Determine Y position based on position parameter
+    padding = 40
+    if position == "top":
+        y_start = padding + 20
+    elif position == "bottom":
+        y_start = height - total_text_height - padding - 40
+    else:  # center
+        y_start = (height - total_text_height) // 2
+
+    # Draw semi-transparent background box
+    box_padding = 25
+    box_top = y_start - box_padding
+    box_bottom = y_start + total_text_height + box_padding
+    max_line_width = max(line_widths) if line_widths else 0
+    box_left = (width - max_line_width) // 2 - box_padding
+    box_right = (width + max_line_width) // 2 + box_padding
+
+    # Draw rounded rectangle background
+    draw.rounded_rectangle(
+        [box_left, box_top, box_right, box_bottom],
+        radius=15,
+        fill=(0, 0, 0, 180),  # Semi-transparent black
+    )
+
+    # Draw text lines (centered)
+    y = y_start
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font)
+        line_width = bbox[2] - bbox[0]
+        x = (width - line_width) // 2
+
+        # Draw text with slight shadow for depth
+        draw.text((x + 2, y + 2), line, font=font, fill=(0, 0, 0, 150))  # Shadow
+        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))  # White text
+
+        y += line_height + line_spacing
+
+    # Composite overlay onto image
+    img = Image.alpha_composite(img, overlay)
+    img = img.convert("RGB")
+
+    # Save to bytes
+    output = io.BytesIO()
+    img.save(output, format="PNG", quality=95)
+    return output.getvalue()
+
+
+def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int, draw: ImageDraw.Draw) -> list[str]:
+    """Wrap text to fit within max_width."""
+    words = text.split()
+    lines = []
+    current_line = []
+
+    for word in words:
+        test_line = ' '.join(current_line + [word])
+        bbox = draw.textbbox((0, 0), test_line, font=font)
+        test_width = bbox[2] - bbox[0]
+
+        if test_width <= max_width:
+            current_line.append(word)
+        else:
+            if current_line:
+                lines.append(' '.join(current_line))
+            current_line = [word]
+
+    if current_line:
+        lines.append(' '.join(current_line))
+
+    return lines
 
 
 class ImageGenerator:
@@ -80,6 +245,8 @@ class ImageGenerator:
         topic: str,
         caption_summary: Optional[str] = None,
         output_dir: Optional[Path] = None,
+        text_overlay: Optional[str] = None,
+        text_position: str = "top",
     ) -> GeneratedImage:
         """Generate an image for the given topic.
 
@@ -87,6 +254,8 @@ class ImageGenerator:
             topic: The topic for the image
             caption_summary: Optional summary of the caption for context
             output_dir: Directory to save the image (defaults to polaris/images/)
+            text_overlay: Optional text to overlay on the image
+            text_position: Position for text ("top", "center", "bottom")
 
         Returns:
             GeneratedImage with local path and metadata
@@ -96,6 +265,14 @@ class ImageGenerator:
 
         # Call Replicate API
         image_bytes = self._call_replicate(image_prompt)
+
+        # Add text overlay if provided
+        if text_overlay:
+            image_bytes = add_text_overlay(
+                image_bytes,
+                text_overlay,
+                position=text_position,
+            )
 
         # Save the image
         if output_dir is None:

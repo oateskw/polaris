@@ -10,6 +10,7 @@ rich>=13.7.0
 tenacity>=8.2.0
 ratelimit>=2.2.1
 python-dotenv>=1.0.0
+Pillow>=10.0.0
 
 # Development dependencies
 pytest>=7.4.0
