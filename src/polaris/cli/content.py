@@ -20,8 +20,8 @@ console = Console()
 
 
 def strip_emojis(text: str) -> str:
-    """Remove emojis from text for Windows console compatibility."""
-    # Pattern to match most emojis and special Unicode characters
+    """Remove emojis and special Unicode from text for Windows console compatibility."""
+    # Pattern to match emojis and special Unicode characters
     emoji_pattern = re.compile(
         "["
         "\U0001F600-\U0001F64F"  # emoticons
@@ -35,9 +35,16 @@ def strip_emojis(text: str) -> str:
         "\U0001FA70-\U0001FAFF"  # symbols and pictographs extended-a
         "\U00002600-\U000026FF"  # misc symbols
         "\U00002700-\U000027BF"  # dingbats
+        "\U00002190-\U000021FF"  # arrows
+        "\U00002000-\U0000206F"  # general punctuation
+        "\U00002300-\U000023FF"  # misc technical
+        "\U000025A0-\U000025FF"  # geometric shapes
+        "\U00002B00-\U00002BFF"  # misc symbols and arrows
         "]+",
         flags=re.UNICODE,
     )
+    # Replace arrows with simple dashes
+    text = text.replace("→", "-").replace("←", "-").replace("•", "-")
     return emoji_pattern.sub("", text)
 
 
@@ -64,7 +71,10 @@ def generate_content(
     account_id: Optional[int] = typer.Option(None, "--account", "-a", help="Account ID to associate with"),
     save: bool = typer.Option(True, "--save/--no-save", help="Save to database"),
     image: bool = typer.Option(False, "--image", "-i", help="Generate an AI image for the post"),
-    github_repo: Optional[str] = typer.Option(None, "--github-repo", help="GitHub repo for image upload (e.g., 'user/repo')"),
+    video: bool = typer.Option(False, "--video", "-v", help="Generate a slideshow video (3 images)"),
+    slides: int = typer.Option(3, "--slides", help="Number of slides for video (2-5)"),
+    no_text: bool = typer.Option(False, "--no-text", help="Generate image/video without text overlay"),
+    github_repo: Optional[str] = typer.Option(None, "--github-repo", help="GitHub repo for media upload (e.g., 'user/repo')"),
 ):
     """Generate AI-powered caption, hashtags, and optionally an image for a post."""
     settings = get_settings()
@@ -74,11 +84,16 @@ def generate_content(
         console.print("Please set ANTHROPIC_API_KEY in your .env file.")
         raise typer.Exit(1)
 
-    if image and not settings.is_replicate_configured:
+    if (image or video) and not settings.is_replicate_configured:
         console.print("[red]Error:[/red] Replicate API key not configured.")
         console.print("Please set REPLICATE_API_KEY in your .env file.")
         console.print("Get a key at: https://replicate.com/account/api-tokens")
         console.print("Note: Replicate requires billing setup but offers $5 free credit.")
+        raise typer.Exit(1)
+
+    # Validate slides count
+    if video and (slides < 2 or slides > 5):
+        console.print("[red]Error:[/red] Slides must be between 2 and 5.")
         raise typer.Exit(1)
 
     from polaris.services.ai import ContentGenerator
@@ -111,9 +126,11 @@ def generate_content(
             from polaris.services.ai.image_generator import extract_hook
             from pathlib import Path
 
-            # Extract hook from caption for text overlay
-            hook_text = extract_hook(result.caption)
-            console.print(f"[dim]Text overlay: {hook_text}[/dim]")
+            # Extract hook from caption for text overlay (unless --no-text)
+            hook_text = None
+            if not no_text:
+                hook_text = extract_hook(result.caption)
+                console.print(f"[dim]Text overlay: {hook_text}[/dim]")
 
             img_generator = ImageGenerator()
             try:
@@ -122,6 +139,7 @@ def generate_content(
                     caption_summary=result.caption[:200],
                     text_overlay=hook_text,
                     text_position="top",
+                    style_instructions=context,
                 )
                 console.print(f"[green]Image generated:[/green] {generated_image.local_path}")
                 console.print(f"[dim]Prompt used: {generated_image.prompt}[/dim]")
@@ -143,6 +161,46 @@ def generate_content(
             finally:
                 img_generator.close()
 
+        # Generate video if requested
+        media_type = None
+        if video:
+            console.print(f"\n[bold blue]Generating video ({slides} slides)...[/bold blue]")
+            console.print("[dim]This may take a few minutes...[/dim]")
+            from polaris.services.ai.video_generator import VideoGenerator
+            from polaris.services.ai import upload_to_cloudinary
+            from pathlib import Path
+
+            vid_generator = VideoGenerator()
+            try:
+                generated_video = vid_generator.generate_video(
+                    topic=topic,
+                    caption=result.caption,
+                    num_slides=slides,
+                    slide_duration=4.0,
+                    include_text=not no_text,
+                    style_instructions=context,
+                )
+                console.print(f"[green]Video generated:[/green] {generated_video.local_path}")
+                console.print(f"[dim]Duration: {generated_video.duration:.1f}s, Slides: {generated_video.num_slides}[/dim]")
+
+                media_type = ContentType.VIDEO
+
+                # Upload to Cloudinary if configured
+                if settings.is_cloudinary_configured:
+                    console.print(f"\n[bold blue]Uploading to Cloudinary...[/bold blue]")
+                    try:
+                        media_url = upload_to_cloudinary(Path(generated_video.local_path))
+                        console.print(f"[green]Uploaded to Cloudinary:[/green] {media_url}")
+                    except Exception as e:
+                        console.print(f"[yellow]Warning:[/yellow] Cloudinary upload failed: {e}")
+                        console.print(f"Video saved locally at: {generated_video.local_path}")
+                else:
+                    console.print(f"\n[yellow]Note:[/yellow] Video saved locally. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in .env to auto-upload for Instagram.")
+            except Exception as e:
+                console.print(f"[red]Video generation error:[/red] {e}")
+            finally:
+                vid_generator.close()
+
         # Save to database if requested
         if save:
             session = get_session()
@@ -156,7 +214,7 @@ def generate_content(
 
             if account_id:
                 content_repo = ContentRepository(session)
-                content = content_repo.create_content(
+                create_kwargs = dict(
                     account_id=account_id,
                     caption=result.caption,
                     hashtags=result.hashtags,
@@ -165,6 +223,9 @@ def generate_content(
                     ai_generated=True,
                     ai_model=result.ai_model,
                 )
+                if media_type is not None:
+                    create_kwargs["media_type"] = media_type
+                content = content_repo.create_content(**create_kwargs)
                 content_repo.commit()
                 console.print(f"\n[green]Content saved with ID:[/green] {content.id}")
                 if media_url:
@@ -441,9 +502,9 @@ def improve_content(
         improved_caption = generator.improve_caption(content.caption, focus)
 
         console.print("[dim]Original:[/dim]")
-        console.print(content.caption)
+        safe_print_panel(content.caption, title="Original Caption", border_style="dim")
         console.print()
-        console.print(Panel(improved_caption, title="[bold green]Improved Caption[/bold green]"))
+        safe_print_panel(improved_caption, title="[bold green]Improved Caption[/bold green]", border_style="green")
 
         if typer.confirm("\nSave improved caption?"):
             content_repo.update_caption(content_id, improved_caption)

@@ -65,6 +65,11 @@ class Settings(BaseSettings):
         description="GitHub branch for uploads",
     )
 
+    # Cloudinary (for video uploads)
+    cloudinary_cloud_name: Optional[str] = Field(default=None, description="Cloudinary cloud name")
+    cloudinary_api_key: Optional[str] = Field(default=None, description="Cloudinary API key")
+    cloudinary_api_secret: Optional[str] = Field(default=None, description="Cloudinary API secret")
+
     # Logging
     log_level: str = Field(
         default="INFO",
@@ -101,6 +106,11 @@ class Settings(BaseSettings):
     def is_image_generation_configured(self) -> bool:
         """Check if any image generation API is configured."""
         return self.is_huggingface_configured or self.is_replicate_configured
+
+    @property
+    def is_cloudinary_configured(self) -> bool:
+        """Check if Cloudinary credentials are configured."""
+        return bool(self.cloudinary_cloud_name and self.cloudinary_api_key and self.cloudinary_api_secret)
 
 
 @lru_cache

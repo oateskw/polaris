@@ -11,6 +11,8 @@ tenacity>=8.2.0
 ratelimit>=2.2.1
 python-dotenv>=1.0.0
 Pillow>=10.0.0
+moviepy>=2.0.0
+cloudinary>=1.30.0
 
 # Development dependencies
 pytest>=7.4.0
