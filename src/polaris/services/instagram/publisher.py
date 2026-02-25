@@ -91,6 +91,67 @@ class InstagramPublisher:
         media_id = self.client.publish_media(container_id)
         return media_id
 
+    def publish_carousel(self, image_urls: list[str], caption: str) -> str:
+        """Publish a carousel (multi-image) post.
+
+        Args:
+            image_urls: List of publicly accessible image URLs (2-10 images)
+            caption: Caption for the carousel post
+
+        Returns:
+            Instagram media ID of the published post
+        """
+        # Create item containers for each image
+        item_ids = [self.client.create_carousel_item_container(url) for url in image_urls]
+
+        # Wait for each item to be ready
+        for item_id in item_ids:
+            self._wait_for_container(item_id)
+
+        # Create the carousel container
+        container_id = self.client.create_carousel_container(item_ids, caption)
+        self._wait_for_container(container_id)
+
+        return self.client.publish_media(container_id)
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        reraise=True,
+    )
+    def publish_story(self, image_url: str) -> str:
+        """Publish an image as an Instagram Story.
+
+        Args:
+            image_url: Publicly accessible HTTPS URL of the image.
+                       9:16 aspect ratio (1080x1920) is strongly recommended.
+
+        Returns:
+            Instagram media ID of the published story
+        """
+        container_id = self.client.create_story_container(image_url)
+        self._wait_for_container(container_id)
+        return self.client.publish_media(container_id)
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        reraise=True,
+    )
+    def publish_story_video(self, video_url: str) -> str:
+        """Publish a video as an Instagram Story.
+
+        Args:
+            video_url: Publicly accessible HTTPS URL of the video.
+                       9:16 aspect ratio is strongly recommended.
+
+        Returns:
+            Instagram media ID of the published story
+        """
+        container_id = self.client.create_story_video_container(video_url)
+        self._wait_for_container(container_id, max_wait=600)
+        return self.client.publish_media(container_id)
+
     def publish_content(self, content: Content) -> str:
         """Publish a Content object to Instagram.
 
@@ -108,10 +169,12 @@ class InstagramPublisher:
         if content.media_type == ContentType.IMAGE:
             return self.publish_image(content.media_url, caption)
         elif content.media_type in (ContentType.VIDEO, ContentType.REEL):
-            media_type = "REELS" if content.media_type == ContentType.REEL else "VIDEO"
-            return self.publish_video(content.media_url, caption, media_type)
+            return self.publish_video(content.media_url, caption, media_type="REELS")
         elif content.media_type == ContentType.CAROUSEL:
-            raise PublishError("Carousel publishing not yet implemented")
+            image_urls = [u.strip() for u in content.media_url.split("|") if u.strip()]
+            if not image_urls:
+                raise PublishError("Carousel content has no image URLs in media_url")
+            return self.publish_carousel(image_urls, caption)
         else:
             raise PublishError(f"Unsupported media type: {content.media_type}")
 

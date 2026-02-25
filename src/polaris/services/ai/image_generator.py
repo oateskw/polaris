@@ -201,6 +201,8 @@ def add_text_overlay(
     """Add a branded text overlay to an image.
 
     Renders a gradient-backed text card with Poppins Bold and an orange accent bar.
+
+    position: "top" | "center" | "bottom" | "lower_third"
     """
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
     width, height = img.size
@@ -223,13 +225,15 @@ def add_text_overlay(
     total_text_h = len(lines) * line_h + (len(lines) - 1) * line_spacing
 
     pad_v, pad_h = 28, 32
-    accent_bar = 5  # orange bar height on top
+    accent_bar = 5
 
     if position == "top":
         y_start = 48 + accent_bar + pad_v
     elif position == "bottom":
         y_start = height - total_text_h - pad_v - 60
-    else:
+    elif position == "lower_third":
+        y_start = int(height * 0.65) + accent_bar + pad_v
+    else:  # center
         y_start = (height - total_text_h) // 2
 
     max_line_w = max(line_widths) if line_widths else 0
@@ -429,10 +433,11 @@ class ImageGenerator:
         text_overlay: Optional[str] = None,
         text_position: str = "top",
         style_instructions: Optional[str] = None,
+        aspect_ratio: str = "1:1",
     ) -> GeneratedImage:
         """Generate a high-quality image for the given topic."""
         image_prompt = self.generate_image_prompt(topic, caption_summary, style_instructions)
-        image_bytes = self._call_replicate(image_prompt)
+        image_bytes = self._call_replicate(image_prompt, aspect_ratio=aspect_ratio)
 
         if text_overlay:
             image_bytes = add_text_overlay(image_bytes, text_overlay, position=text_position)
@@ -444,6 +449,53 @@ class ImageGenerator:
         safe_topic = re.sub(r'[^\w\s-]', '', topic)[:30].strip().replace(' ', '_')
         timestamp = int(time.time())
         filename = f"{safe_topic}_{timestamp}.png"
+        local_path = output_dir / filename
+        local_path.write_bytes(image_bytes)
+
+        return GeneratedImage(
+            local_path=str(local_path),
+            url=None,
+            prompt=image_prompt,
+            model=self.REPLICATE_MODEL,
+        )
+
+    def generate_story_image(
+        self,
+        topic: str,
+        caption_summary: Optional[str] = None,
+        output_dir: Optional[Path] = None,
+        text_overlay: Optional[str] = None,
+        style_instructions: Optional[str] = None,
+    ) -> GeneratedImage:
+        """Generate a 9:16 vertical image optimised for Instagram Stories.
+
+        Uses Flux 1.1 Pro's native 9:16 output and places the text overlay
+        in the lower-third of the frame so the subject has visual breathing
+        room above it.
+        """
+        story_style = (style_instructions or "") + (
+            " Vertical 9:16 composition. Subject centred in the upper two-thirds "
+            "of the frame, leaving clear negative space in the lower third for text. "
+            "Portrait orientation, cinematic vertical framing."
+        )
+        image_prompt = self.generate_image_prompt(topic, caption_summary, story_style)
+        image_bytes = self._call_replicate(image_prompt, aspect_ratio="9:16")
+
+        if text_overlay:
+            image_bytes = add_text_overlay(
+                image_bytes,
+                text_overlay,
+                position="lower_third",
+                font_size=62,
+            )
+
+        if output_dir is None:
+            output_dir = Path.cwd() / "images"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        safe_topic = re.sub(r'[^\w\s-]', '', topic)[:30].strip().replace(' ', '_')
+        timestamp = int(time.time())
+        filename = f"story_{safe_topic}_{timestamp}.png"
         local_path = output_dir / filename
         local_path.write_bytes(image_bytes)
 
@@ -483,7 +535,7 @@ class ImageGenerator:
             model=self.REPLICATE_MODEL,
         )
 
-    def _call_replicate(self, prompt: str) -> bytes:
+    def _call_replicate(self, prompt: str, aspect_ratio: str = "1:1") -> bytes:
         """Call Replicate Flux 1.1 Pro to generate an image."""
         headers = {
             "Authorization": f"Token {self.api_key}",
@@ -494,7 +546,7 @@ class ImageGenerator:
         payload = {
             "input": {
                 "prompt": prompt,
-                "aspect_ratio": "1:1",
+                "aspect_ratio": aspect_ratio,
                 "output_format": "png",
                 "output_quality": 100,
                 "safety_tolerance": 3,

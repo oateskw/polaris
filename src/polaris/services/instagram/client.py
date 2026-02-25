@@ -146,6 +146,27 @@ class InstagramClient:
         }
         return self._make_request("GET", url, params=params)
 
+    def create_carousel_item_container(self, image_url: str) -> str:
+        """Create a media container for a single carousel item."""
+        url = f"{self.GRAPH_URL}/{self.instagram_user_id}/media"
+        params = {
+            "image_url": image_url,
+            "is_carousel_item": "true",
+        }
+        response = self._make_request("POST", url, params=params)
+        return response["id"]
+
+    def create_carousel_container(self, children: list[str], caption: str) -> str:
+        """Create a carousel container from item container IDs."""
+        url = f"{self.GRAPH_URL}/{self.instagram_user_id}/media"
+        params = {
+            "media_type": "CAROUSEL",
+            "children": ",".join(children),
+            "caption": caption,
+        }
+        response = self._make_request("POST", url, params=params)
+        return response["id"]
+
     def create_media_container(
         self,
         image_url: str,
@@ -176,6 +197,40 @@ class InstagramClient:
             "video_url": video_url,
             "caption": caption,
             "media_type": media_type,
+        }
+        response = self._make_request("POST", url, params=params)
+        return response["id"]
+
+    def create_story_container(self, image_url: str) -> str:
+        """Create a media container for an Instagram Story image.
+
+        Args:
+            image_url: Publicly accessible HTTPS URL of the image (9:16 recommended)
+
+        Returns:
+            Container ID ready for publishing
+        """
+        url = f"{self.GRAPH_URL}/{self.instagram_user_id}/media"
+        params = {
+            "image_url": image_url,
+            "media_type": "STORIES",
+        }
+        response = self._make_request("POST", url, params=params)
+        return response["id"]
+
+    def create_story_video_container(self, video_url: str) -> str:
+        """Create a media container for an Instagram Story video.
+
+        Args:
+            video_url: Publicly accessible HTTPS URL of the video (9:16 recommended)
+
+        Returns:
+            Container ID ready for publishing
+        """
+        url = f"{self.GRAPH_URL}/{self.instagram_user_id}/media"
+        params = {
+            "video_url": video_url,
+            "media_type": "STORIES",
         }
         response = self._make_request("POST", url, params=params)
         return response["id"]

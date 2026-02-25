@@ -74,6 +74,8 @@ def generate_content(
     video: bool = typer.Option(False, "--video", "-v", help="Generate a slideshow video (3 images)"),
     slides: int = typer.Option(3, "--slides", help="Number of slides for video (2-5)"),
     no_text: bool = typer.Option(False, "--no-text", help="Generate image/video without text overlay"),
+    carousel: bool = typer.Option(False, "--carousel", "-C", help="Generate a multi-image carousel post"),
+    story: bool = typer.Option(False, "--story", "-s", help="Generate a 9:16 image and post as an Instagram Story"),
     github_repo: Optional[str] = typer.Option(None, "--github-repo", help="GitHub repo for media upload (e.g., 'user/repo')"),
 ):
     """Generate AI-powered caption, hashtags, and optionally an image for a post."""
@@ -84,7 +86,7 @@ def generate_content(
         console.print("Please set ANTHROPIC_API_KEY in your .env file.")
         raise typer.Exit(1)
 
-    if (image or video) and not settings.is_replicate_configured:
+    if (image or video or carousel) and not settings.is_replicate_configured:
         console.print("[red]Error:[/red] Replicate API key not configured.")
         console.print("Please set REPLICATE_API_KEY in your .env file.")
         console.print("Get a key at: https://replicate.com/account/api-tokens")
@@ -101,6 +103,7 @@ def generate_content(
     console.print(f"[bold blue]Generating content for:[/bold blue] {topic}\n")
 
     media_url = None
+    media_type = None
 
     try:
         generator = ContentGenerator()
@@ -161,8 +164,59 @@ def generate_content(
             finally:
                 img_generator.close()
 
+        # Generate carousel if requested
+        if carousel:
+            console.print(f"\n[bold blue]Generating carousel ({slides} slides)...[/bold blue]")
+            from polaris.services.ai.content_generator import CarouselSlide
+            from polaris.services.ai import ImageGenerator, upload_to_github
+            from pathlib import Path
+
+            carousel_slides = generator.generate_carousel_slides(topic, context or "", slides)
+            console.print(f"[green]Generated {len(carousel_slides)} slides[/green]\n")
+
+            img_generator = ImageGenerator()
+            slide_urls = []
+            repo = github_repo or settings.github_repo or "oateskw/polaris"
+
+            try:
+                for i, slide in enumerate(carousel_slides, 1):
+                    console.print(f"[bold cyan][{i}/{len(carousel_slides)}] Generating slide:[/bold cyan] \"{slide.title}\"")
+                    console.print(f"      Subtitle: {slide.subtitle}")
+
+                    generated_image = img_generator.generate_carousel_slide_image(
+                        title=slide.title,
+                        subtitle=slide.subtitle,
+                        image_prompt=slide.image_prompt,
+                        slide_index=i,
+                    )
+                    console.print(f"      Image saved: {generated_image.local_path}")
+
+                    if repo:
+                        try:
+                            slide_url = upload_to_github(
+                                local_path=Path(generated_image.local_path),
+                                repo=repo,
+                                branch=settings.github_branch,
+                            )
+                            slide_urls.append(slide_url)
+                            console.print(f"      Uploaded: {slide_url}\n")
+                        except Exception as e:
+                            console.print(f"      [yellow]Warning:[/yellow] Upload failed: {e}")
+                            console.print(f"      Image saved locally: {generated_image.local_path}\n")
+
+                    # Small pause between slides to avoid Replicate rate limiting
+                    if i < len(carousel_slides):
+                        import time as _time
+                        _time.sleep(3)
+            finally:
+                img_generator.close()
+
+            if slide_urls:
+                media_url = "|".join(slide_urls)
+                media_type = ContentType.CAROUSEL
+                console.print(f"[green]Carousel ready with {len(slide_urls)} slides.[/green]")
+
         # Generate video if requested
-        media_type = None
         if video:
             console.print(f"\n[bold blue]Generating video ({slides} slides)...[/bold blue]")
             console.print("[dim]This may take a few minutes...[/dim]")
@@ -200,6 +254,73 @@ def generate_content(
                 console.print(f"[red]Video generation error:[/red] {e}")
             finally:
                 vid_generator.close()
+
+        # Generate and post story if requested
+        if story:
+            console.print("\n[bold blue]Generating 9:16 story image...[/bold blue]")
+            from polaris.services.ai.image_generator import ImageGenerator, extract_hook, upload_to_github
+            from polaris.services.instagram.client import InstagramClient
+            from polaris.services.instagram.publisher import InstagramPublisher
+            from polaris.repositories import AccountRepository
+            from pathlib import Path
+
+            hook_text = None if no_text else extract_hook(result.caption)
+            if hook_text:
+                console.print(f"[dim]Text overlay: {hook_text}[/dim]")
+
+            img_generator = ImageGenerator()
+            try:
+                generated_story = img_generator.generate_story_image(
+                    topic=topic,
+                    caption_summary=result.caption[:200],
+                    text_overlay=hook_text,
+                    style_instructions=context,
+                )
+                console.print(f"[green]Story image saved:[/green] {generated_story.local_path}")
+
+                # Upload to GitHub to get a public URL
+                repo = github_repo or settings.github_repo or "oateskw/polaris"
+                story_url = None
+                if repo:
+                    console.print(f"[bold blue]Uploading story image to GitHub ({repo})...[/bold blue]")
+                    try:
+                        story_url = upload_to_github(
+                            local_path=Path(generated_story.local_path),
+                            repo=repo,
+                            branch=settings.github_branch,
+                        )
+                        console.print(f"[green]Uploaded:[/green] {story_url}")
+                    except Exception as e:
+                        console.print(f"[yellow]Warning:[/yellow] GitHub upload failed: {e}")
+
+                # Post to Instagram Story
+                if story_url:
+                    console.print("\n[bold blue]Publishing to Instagram Story...[/bold blue]")
+                    session = get_session()
+                    try:
+                        account_repo = AccountRepository(session)
+                        accounts = account_repo.get_active_accounts()
+                        if not accounts:
+                            console.print("[yellow]No Instagram accounts connected. Run 'polaris accounts add'.[/yellow]")
+                        else:
+                            acct = accounts[0] if account_id is None else next(
+                                (a for a in accounts if a.id == account_id), accounts[0]
+                            )
+                            client = InstagramClient(
+                                access_token=acct.access_token,
+                                instagram_user_id=acct.instagram_user_id,
+                            )
+                            publisher = InstagramPublisher(client)
+                            story_media_id = publisher.publish_story(story_url)
+                            console.print(f"[bold green]Story published![/bold green] Media ID: {story_media_id}")
+                    except Exception as e:
+                        console.print(f"[red]Story publish error:[/red] {e}")
+                    finally:
+                        session.close()
+                else:
+                    console.print("[yellow]No public URL — story not published. Set --github-repo to auto-upload.[/yellow]")
+            finally:
+                img_generator.close()
 
         # Save to database if requested
         if save:
