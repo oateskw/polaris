@@ -33,6 +33,15 @@ class ContentIdea:
     key_message: str
 
 
+@dataclass
+class CarouselSlide:
+    """A single slide in an Instagram carousel post."""
+
+    title: str
+    subtitle: str
+    image_prompt: str
+
+
 class ContentGenerator:
     """Generate Instagram content using Claude AI."""
 
@@ -167,6 +176,79 @@ class ContentGenerator:
             prompt=prompt,
             temperature=0.6,
         ).strip()
+
+    def generate_carousel_slides(
+        self,
+        topic: str,
+        context: str = "",
+        num_slides: int = 5,
+    ) -> list[CarouselSlide]:
+        """Generate carousel slide content for an Instagram carousel post.
+
+        Args:
+            topic: The topic or theme for the carousel
+            context: Additional context or style guidance
+            num_slides: Number of slides to generate
+
+        Returns:
+            List of CarouselSlide objects
+        """
+        prompt = f"""Create {num_slides} Instagram carousel slides about: {topic}
+{f"Context: {context}" if context else ""}
+
+Return ONLY this exact format, no extra text:
+
+SLIDE 1
+TITLE: <bold hook, max 6 words, ALL CAPS>
+SUBTITLE: <supporting line, max 10 words>
+IMAGE: <image generation prompt, realistic photography, no text in image>
+
+SLIDE 2
+TITLE: <bold hook, max 6 words, ALL CAPS>
+SUBTITLE: <supporting line, max 10 words>
+IMAGE: <image generation prompt, realistic photography, no text in image>
+
+(continue for all {num_slides} slides)
+
+Rules:
+- Slide 1: Hook/attention grabber
+- Middle slides: Problem -> Solution -> Process steps
+- Last slide: Clear CTA
+- Image prompts: warm lighting, real people/settings, no robots, no text"""
+
+        response = self.client.generate(prompt=prompt, temperature=0.7, max_tokens=1500)
+        return self._parse_carousel_slides(response)
+
+    def _parse_carousel_slides(self, response: str) -> list[CarouselSlide]:
+        """Parse carousel slides from AI response."""
+        slides = []
+        current: dict[str, str] = {}
+
+        for line in response.split("\n"):
+            line = line.strip()
+            if line.upper().startswith("SLIDE ") and line.split()[-1].isdigit():
+                if current and "title" in current:
+                    slides.append(CarouselSlide(
+                        title=current.get("title", ""),
+                        subtitle=current.get("subtitle", ""),
+                        image_prompt=current.get("image", ""),
+                    ))
+                current = {}
+            elif line.upper().startswith("TITLE:"):
+                current["title"] = line.split(":", 1)[1].strip()
+            elif line.upper().startswith("SUBTITLE:"):
+                current["subtitle"] = line.split(":", 1)[1].strip()
+            elif line.upper().startswith("IMAGE:"):
+                current["image"] = line.split(":", 1)[1].strip()
+
+        if current and "title" in current:
+            slides.append(CarouselSlide(
+                title=current.get("title", ""),
+                subtitle=current.get("subtitle", ""),
+                image_prompt=current.get("image", ""),
+            ))
+
+        return slides
 
     def _parse_content_ideas(self, response: str) -> list[ContentIdea]:
         """Parse content ideas from AI response."""

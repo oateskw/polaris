@@ -17,7 +17,7 @@ class ClaudeClientError(Exception):
 class ClaudeClient:
     """Wrapper for Anthropic Claude API."""
 
-    DEFAULT_MODEL = "claude-sonnet-4-20250514"
+    DEFAULT_MODEL = "claude-sonnet-4-6"
     MAX_TOKENS = 1024
 
     def __init__(

@@ -261,7 +261,6 @@ def generate_content(
             from polaris.services.ai.image_generator import ImageGenerator, extract_hook, upload_to_github
             from polaris.services.instagram.client import InstagramClient
             from polaris.services.instagram.publisher import InstagramPublisher
-            from polaris.repositories import AccountRepository
             from pathlib import Path
 
             hook_text = None if no_text else extract_hook(result.caption)

@@ -14,7 +14,7 @@ from moviepy import (
     CompositeVideoClip,
     concatenate_videoclips,
 )
-from moviepy.video.fx import CrossFadeIn, CrossFadeOut, FadeOut
+from moviepy.video.fx import CrossFadeIn, CrossFadeOut, FadeIn, FadeOut
 from PIL import Image, ImageDraw, ImageFont
 import io
 
@@ -94,6 +94,53 @@ def _generate_story_arc_prompts(
     while len(scenes) < num_slides:
         scenes.append(f"A small business owner working confidently at a modern desk, scene {len(scenes) + 1}")
     return scenes[:num_slides]
+
+
+def _generate_slide_texts(
+    topic: str,
+    caption: str,
+    num_slides: int,
+    claude_client,
+) -> list[str]:
+    """Generate one short on-screen text line per slide, forming a story arc.
+
+    The lines are designed to be read as a connected narrative across the video:
+    Hook → Problem → Turning Point → Solution/CTA.
+    """
+    prompt = f"""Write exactly {num_slides} short on-screen text captions for an Instagram Reel.
+
+Topic: "{topic}"
+
+These lines appear one per slide as the video plays — like chapter titles that tell a story together.
+
+Story arc to follow across {num_slides} slides:
+- Slide 1: Grab attention / relatable hook
+- Middle slides: Build the problem, then the turning point
+- Last slide: The payoff / clear call to action
+
+Rules:
+- Max 7 words per line — punchy and bold
+- Each line must make sense on its own AND build on the previous
+- Write like a confident entrepreneur, not a marketer
+- No hashtags, no emojis
+
+Return ONLY {num_slides} lines, numbered 1. 2. 3. etc. Nothing else."""
+
+    response = claude_client.generate(prompt=prompt, temperature=0.7, max_tokens=200)
+
+    lines = []
+    for line in response.strip().split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        cleaned = re.sub(r"^\d+[.)]\s*", "", line).strip()
+        if cleaned:
+            lines.append(cleaned)
+
+    # Fallback if parsing fails
+    while len(lines) < num_slides:
+        lines.append(topic[:50])
+    return lines[:num_slides]
 
 
 # ---------------------------------------------------------------------------
@@ -326,6 +373,14 @@ class VideoGenerator:
             claude_client=self.image_generator.claude_client,
         )
 
+        # Generate per-slide text lines
+        slide_texts = _generate_slide_texts(
+            topic=topic,
+            caption=caption,
+            num_slides=num_slides,
+            claude_client=self.image_generator.claude_client,
+        )
+
         # Generate images for each scene
         image_paths = []
         prompts = []
@@ -372,16 +427,30 @@ class VideoGenerator:
 
         total_duration = final_clip.duration
 
-        # Text overlay on top of the full video (hook text, fades out after slide 1)
+        # Per-slide text overlays — each line is timed to its corresponding slide
         if include_text:
-            text_array = create_text_overlay_image(hook, size=(1080, 1080), position="top")
-            text_duration = min(slide_duration * 1.2, total_duration)
-            text_clip = (
-                ImageClip(text_array)
-                .with_duration(text_duration)
-                .with_effects([FadeOut(0.4)])
-            )
-            final_clip = CompositeVideoClip([final_clip, text_clip])
+            text_clips = []
+            fade = self.CROSSFADE_DURATION
+            for i, text_line in enumerate(slide_texts):
+                # Slide i starts at this timestamp in the final video
+                slide_start = i * (slide_duration - fade)
+                # Show text for most of the slide, leaving a gap before crossfade
+                text_dur = slide_duration - fade - 0.3
+                if text_dur <= 0:
+                    text_dur = slide_duration * 0.7
+
+                text_array = create_text_overlay_image(
+                    text_line, size=(1080, 1080), position="top"
+                )
+                text_clip = (
+                    ImageClip(text_array)
+                    .with_start(slide_start + 0.15)
+                    .with_duration(text_dur)
+                    .with_effects([FadeIn(0.25), FadeOut(0.35)])
+                )
+                text_clips.append(text_clip)
+
+            final_clip = CompositeVideoClip([final_clip] + text_clips)
 
         # Output filename
         safe_topic = re.sub(r'[^\w\s-]', '', topic)[:30].strip().replace(' ', '_')

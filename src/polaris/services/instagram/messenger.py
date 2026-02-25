@@ -24,7 +24,7 @@ class InstagramMessenger:
 
         Returns list of dicts with keys: id, text, username, ig_user_id, timestamp
         """
-        url = f"{self.client.BASE_URL}/{media_id}/comments"
+        url = f"{self.client.GRAPH_URL}/{media_id}/comments"
         params = {
             "fields": "id,text,username,from,timestamp",
             "limit": 100,
