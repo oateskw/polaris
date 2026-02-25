@@ -9,6 +9,7 @@ from polaris import __version__
 from polaris.cli.accounts import accounts_app
 from polaris.cli.analytics import analytics_app
 from polaris.cli.content import content_app
+from polaris.cli.leads import leads_app
 from polaris.cli.schedule import schedule_app
 from polaris.config import get_settings
 from polaris.models.base import Base
@@ -26,6 +27,7 @@ app.add_typer(accounts_app, name="accounts", help="Manage Instagram accounts")
 app.add_typer(content_app, name="content", help="Create and manage content")
 app.add_typer(schedule_app, name="schedule", help="Schedule posts")
 app.add_typer(analytics_app, name="analytics", help="View analytics and reports")
+app.add_typer(leads_app, name="leads", help="Comment-to-DM lead automation")
 
 
 def get_session():
@@ -97,7 +99,41 @@ def run(
     scheduler = SchedulerService(session_factory=Session, settings=settings)
     scheduler.start()
 
-    console.print("[green]Scheduler started successfully![/green]")
+    # Load all pending scheduled posts from the DB into APScheduler
+    from datetime import datetime, timezone, timedelta
+    from polaris.repositories.schedule_repository import ScheduleRepository
+
+    with Session() as session:
+        repo = ScheduleRepository(session)
+        pending = repo.get_pending()
+        now = datetime.now(timezone.utc)
+        loaded = 0
+        for post in pending:
+            scheduled_time = post.scheduled_time
+            if scheduled_time.tzinfo is None:
+                scheduled_time = scheduled_time.replace(tzinfo=timezone.utc)
+            # If past-due but within grace period, fire in 5 seconds
+            if scheduled_time <= now:
+                scheduled_time = now + timedelta(seconds=5)
+            scheduler.schedule_post(post.id, scheduled_time)
+            loaded += 1
+
+    console.print(f"[green]Scheduler started successfully! Loaded {loaded} pending post(s).[/green]")
+
+    # Register lead polling for accounts that have active triggers
+    from polaris.repositories.lead_repository import CommentTriggerRepository
+
+    with Session() as session:
+        trigger_repo = CommentTriggerRepository(session)
+        active_triggers = trigger_repo.get_active()
+        polled_accounts = set()
+        for trigger in active_triggers:
+            if trigger.account_id not in polled_accounts:
+                scheduler.schedule_lead_polling(trigger.account_id)
+                polled_accounts.add(trigger.account_id)
+        if polled_accounts:
+            console.print(f"[green]Lead polling active for {len(polled_accounts)} account(s).[/green]")
+
     console.print("Press Ctrl+C to stop")
 
     if foreground:

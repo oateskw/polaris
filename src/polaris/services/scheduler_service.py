@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, JobExecutionEvent
-from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 from sqlalchemy.orm import Session
@@ -35,7 +35,7 @@ class SchedulerService:
         """Get or create the scheduler instance."""
         if self._scheduler is None:
             jobstores = {
-                "default": SQLAlchemyJobStore(url=self.settings.database_url)
+                "default": MemoryJobStore()
             }
 
             self._scheduler = BackgroundScheduler(
@@ -232,6 +232,78 @@ class SchedulerService:
     def _on_job_error(self, event: JobExecutionEvent) -> None:
         """Handle job execution error."""
         logger.error(f"Job {event.job_id} failed: {event.exception}")
+
+    def schedule_lead_polling(self, account_id: int) -> None:
+        """Register interval jobs to poll comment triggers and conversations.
+
+        Args:
+            account_id: The InstagramAccount ID to poll for
+        """
+        from apscheduler.triggers.interval import IntervalTrigger
+
+        scheduler = self._get_scheduler()
+
+        scheduler.add_job(
+            self._poll_triggers,
+            trigger=IntervalTrigger(minutes=2),
+            args=[account_id],
+            id=f"poll_triggers_{account_id}",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            self._poll_conversations,
+            trigger=IntervalTrigger(minutes=3),
+            args=[account_id],
+            id=f"poll_conversations_{account_id}",
+            replace_existing=True,
+        )
+        logger.info(f"Lead polling scheduled for account {account_id}")
+
+    def _poll_triggers(self, account_id: int) -> None:
+        """APScheduler job: poll comment triggers for new keyword matches."""
+        from polaris.services.lead_service import LeadService
+
+        session = self.session_factory()
+        try:
+            from polaris.models.account import InstagramAccount
+
+            account = session.get(InstagramAccount, account_id)
+            if not account or not account.is_active:
+                logger.warning(f"Account {account_id} not found or inactive, skipping trigger poll")
+                return
+
+            service = LeadService(session, account)
+            new_leads = service.poll_triggers()
+            if new_leads:
+                logger.info(f"poll_triggers: {new_leads} new lead(s) for account {account_id}")
+        except Exception as e:
+            logger.error(f"poll_triggers failed for account {account_id}: {e}")
+            session.rollback()
+        finally:
+            session.close()
+
+    def _poll_conversations(self, account_id: int) -> None:
+        """APScheduler job: poll DM threads for replies and send AI responses."""
+        from polaris.services.lead_service import LeadService
+
+        session = self.session_factory()
+        try:
+            from polaris.models.account import InstagramAccount
+
+            account = session.get(InstagramAccount, account_id)
+            if not account or not account.is_active:
+                logger.warning(f"Account {account_id} not found or inactive, skipping conversation poll")
+                return
+
+            service = LeadService(session, account)
+            replies = service.poll_conversations()
+            if replies:
+                logger.info(f"poll_conversations: {replies} AI reply/replies sent for account {account_id}")
+        except Exception as e:
+            logger.error(f"poll_conversations failed for account {account_id}: {e}")
+            session.rollback()
+        finally:
+            session.close()
 
     def get_pending_jobs(self) -> list[dict]:
         """Get list of pending scheduled jobs."""
