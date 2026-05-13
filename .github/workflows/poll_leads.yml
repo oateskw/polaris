@@ -1,6 +1,9 @@
 name: Poll Instagram Leads
 
 on:
+  schedule:
+    # GitHub Actions minimum practical interval
+    - cron: '*/5 * * * *'
   workflow_dispatch:  # Manual trigger from GitHub UI only
 
 jobs:
