@@ -64,6 +64,7 @@ class LeadService:
         )
 
         new_leads = 0
+        had_delivery_failures = False
         keyword = trigger.keyword.lower()
 
         for comment in comments:
@@ -111,6 +112,7 @@ class LeadService:
                         f"Failed to deliver initial outreach for comment {comment_id} "
                         f"(user: {username}): {e}"
                     )
+                    had_delivery_failures = True
                     continue
 
             # Create lead record
@@ -142,8 +144,15 @@ class LeadService:
             )
             self.notifier.notify_new_lead(lead, trigger)
 
-        # Advance the polling cursor
-        self.trigger_repo.update_last_polled(trigger.id, datetime.now(timezone.utc))
+        # Advance polling cursor only if all matched comments were deliverable.
+        # If delivery failed for any match, keep cursor unchanged so it can retry.
+        if had_delivery_failures:
+            logger.warning(
+                f"Keeping last_polled_at unchanged for trigger {trigger.id} "
+                "because at least one initial outreach delivery failed"
+            )
+        else:
+            self.trigger_repo.update_last_polled(trigger.id, datetime.now(timezone.utc))
         self.session.commit()
 
         return new_leads
