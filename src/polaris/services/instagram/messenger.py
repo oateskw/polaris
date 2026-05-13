@@ -86,6 +86,43 @@ class InstagramMessenger:
             logger.error(f"Failed to fetch conversations: {e}")
             return []
 
+    def get_recent_inbound_messages(self, since: Optional[datetime] = None) -> list[dict[str, Any]]:
+        """Fetch recent inbound messages from all conversations.
+
+        Returns list of message dicts with keys: id, text, from_ig_user_id, from_username, created_time
+        """
+        conversations = self.get_conversations()
+        messages = []
+
+        for conv in conversations:
+            messages_data = conv.get("messages", {}).get("data", [])
+            for msg in messages_data:
+                from_data = msg.get("from", {})
+                from_id = from_data.get("id", "")
+
+                # Skip messages we sent (from us)
+                if from_id == self.client.instagram_user_id:
+                    continue
+
+                msg_timestamp_str = msg.get("created_time", "")
+                if msg_timestamp_str and since:
+                    try:
+                        msg_dt = datetime.fromisoformat(msg_timestamp_str.replace("Z", "+00:00"))
+                        if msg_dt < since:
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+
+                messages.append({
+                    "id": msg.get("id", ""),
+                    "text": msg.get("message", ""),
+                    "from_ig_user_id": from_id,
+                    "from_username": from_data.get("username", ""),
+                    "created_time": msg_timestamp_str,
+                })
+
+        return messages
+
     def reply_to_comment(self, comment_id: str, message: str) -> dict[str, Any]:
         """Post a public reply to a comment."""
         try:

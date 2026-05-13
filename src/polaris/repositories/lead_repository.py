@@ -89,6 +89,11 @@ class LeadRepository(BaseRepository[Lead]):
         stmt = select(Lead).where(Lead.comment_id == comment_id)
         return self.session.execute(stmt).scalars().first()
 
+    def get_by_inbound_message_id(self, message_id: str) -> Optional[Lead]:
+        """Return a lead by the inbound DM message ID (for deduplication)."""
+        stmt = select(Lead).where(Lead.inbound_message_id == message_id)
+        return self.session.execute(stmt).scalars().first()
+
     def create_lead(
         self,
         account_id: int,
@@ -96,10 +101,11 @@ class LeadRepository(BaseRepository[Lead]):
         commenter_ig_user_id: str,
         commenter_username: str,
         post_instagram_media_id: str,
-        comment_id: str,
-        comment_text: str,
+        comment_id: Optional[str] = None,
+        comment_text: str = "",
+        inbound_message_id: Optional[str] = None,
     ) -> Lead:
-        """Create a new Lead record."""
+        """Create a new Lead record (from comment or inbound DM)."""
         return self.create(
             account_id=account_id,
             trigger_id=trigger_id,
@@ -108,6 +114,7 @@ class LeadRepository(BaseRepository[Lead]):
             post_instagram_media_id=post_instagram_media_id,
             comment_id=comment_id,
             comment_text=comment_text,
+            inbound_message_id=inbound_message_id,
             conversation_history=[],
             status=LeadStatus.NEW,
         )

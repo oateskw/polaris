@@ -48,10 +48,13 @@ class CommentTrigger(Base, TimestampMixin):
 
 
 class Lead(Base, TimestampMixin):
-    """A lead captured from a comment trigger."""
+    """A lead captured from a comment trigger or inbound DM."""
 
     __tablename__ = "leads"
-    __table_args__ = (UniqueConstraint("comment_id", name="uq_leads_comment_id"),)
+    __table_args__ = (
+        UniqueConstraint("comment_id", name="uq_leads_comment_id"),
+        UniqueConstraint("inbound_message_id", name="uq_leads_inbound_message_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("instagram_accounts.id"), nullable=False)
@@ -59,8 +62,9 @@ class Lead(Base, TimestampMixin):
     commenter_ig_user_id: Mapped[str] = mapped_column(String(100), nullable=False)
     commenter_username: Mapped[str] = mapped_column(String(100), nullable=False)
     post_instagram_media_id: Mapped[str] = mapped_column(String(100), nullable=False)
-    comment_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    comment_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     comment_text: Mapped[str] = mapped_column(Text, nullable=False)
+    inbound_message_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     dm_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     dm_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     conversation_history: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)

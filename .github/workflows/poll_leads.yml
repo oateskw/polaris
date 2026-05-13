@@ -1,4 +1,4 @@
-name: Poll Instagram Leads
+name: Poll Instagram Inbound DMs
 
 on:
   schedule:
@@ -50,11 +50,11 @@ jobs:
           echo "No active triggers found. Skipping poll."
           exit 0
 
-      - name: Poll for CAKE comments and send DMs
+      - name: Poll for CAKE DMs and respond
         if: steps.trigger_check.outputs.has_triggers == 'true'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           META_APP_ID: ${{ secrets.META_APP_ID }}
           META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
-        run: python -m polaris leads poll
+        run: python -m polaris leads poll_inbound

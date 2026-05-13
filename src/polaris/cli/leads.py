@@ -353,6 +353,62 @@ def poll(
     session.close()
 
 
+@leads_app.command("poll_inbound")
+def poll_inbound(
+    account_id: int = typer.Option(
+        None, "--account", "-a", help="Account ID (uses first active if not specified)"
+    ),
+):
+    """Check inbound DMs for trigger keywords and send initial responses.
+
+    This is an alternative to comment trigger polling that doesn't require
+    outbound messaging permissions. Users send DMs with your trigger keyword
+    (e.g. 'CAKE') and get an automated response.
+    """
+    import logging
+    from logging.handlers import RotatingFileHandler
+    from pathlib import Path
+
+    # Log to file so silent Task Scheduler runs leave a trail
+    log_path = Path(__file__).parents[4] / "logs" / "leads.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(str(log_path), maxBytes=5_000_000, backupCount=3)
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logging.basicConfig(level=logging.INFO, handlers=[handler])
+
+    session = _get_session()
+    account = _get_active_account(session, account_id)
+    if not account:
+        console.print("[red]No active account found.[/red]")
+        session.close()
+        raise typer.Exit(1)
+
+    from polaris.services.lead_service import LeadService
+
+    try:
+        service = LeadService(session, account)
+
+        new_leads = service.poll_inbound_dm_triggers()
+        if new_leads:
+            console.print(f"[green]{new_leads} new inbound DM lead(s) detected and responded to.[/green]")
+        else:
+            console.print("[dim]No new inbound trigger matches.[/dim]")
+
+        replies = service.poll_conversations()
+        if replies:
+            console.print(f"[green]{replies} AI reply/replies sent.[/green]")
+        else:
+            console.print("[dim]No pending conversations.[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Poll error:[/red] {e}")
+        logging.error(f"Poll failed for account {account.id}: {e}")
+        session.close()
+        raise typer.Exit(1)
+
+    session.close()
+
+
 @leads_app.command("show")
 def show(
     lead_id: int = typer.Argument(..., help="Lead ID to inspect"),

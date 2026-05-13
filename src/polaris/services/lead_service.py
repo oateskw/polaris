@@ -158,6 +158,110 @@ class LeadService:
         return new_leads
 
     # ------------------------------------------------------------------
+    # Inbound DM trigger polling (alternative to comment triggers)
+    # ------------------------------------------------------------------
+
+    def poll_inbound_dm_triggers(self) -> int:
+        """Check for inbound DMs matching active trigger keywords.
+
+        This bypasses the Instagram messaging window restriction because
+        the user initiated the conversation. Returns number of new leads created.
+        """
+        triggers = self.trigger_repo.get_active_for_account(self.account.id)
+        if not triggers:
+            return 0
+
+        # Fetch all recent inbound messages
+        try:
+            messages = self.messenger.get_recent_inbound_messages(
+                since=None  # Fetch all for now; filtering by trigger.last_polled_at is optional
+            )
+        except Exception as e:
+            logger.error(f"Failed to fetch inbound DM messages: {e}")
+            return 0
+
+        new_leads = 0
+        keyword_to_trigger = {t.keyword.lower(): t for t in triggers}
+
+        for msg in messages:
+            msg_text = msg.get("text", "").lower()
+            from_user_id = msg.get("from_ig_user_id", "")
+            from_username = msg.get("from_username", "unknown")
+            message_id = msg.get("id", "")
+
+            if not from_user_id or not message_id:
+                continue
+
+            # Check if this message matches any active trigger
+            matched_trigger = None
+            for keyword, trigger in keyword_to_trigger.items():
+                if keyword in msg_text:
+                    matched_trigger = trigger
+                    break
+
+            if not matched_trigger:
+                continue
+
+            # Deduplication: skip if we already have a lead for this message
+            existing = self.lead_repo.get_by_inbound_message_id(message_id)
+            if existing:
+                logger.debug(f"Skipping duplicate inbound message {message_id}")
+                continue
+
+            # Send initial response
+            try:
+                self.messenger.send_message(from_user_id, matched_trigger.initial_message)
+                logger.info(
+                    f"Sent initial DM response to @{from_username} (ig_user_id={from_user_id}) "
+                    f"for inbound message {message_id}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to send DM response to @{from_username} "
+                    f"for inbound message {message_id}: {e}"
+                )
+                continue
+
+            # Create lead record (use a placeholder post_media_id since there's no post)
+            lead = self.lead_repo.create_lead(
+                account_id=self.account.id,
+                trigger_id=matched_trigger.id,
+                commenter_ig_user_id=from_user_id,
+                commenter_username=from_username,
+                post_instagram_media_id="0",  # Placeholder; inbound DM doesn't have a post
+                comment_id=None,
+                comment_text=msg_text,
+                inbound_message_id=message_id,
+            )
+
+            # Record initial DM in conversation history
+            now = datetime.now(timezone.utc)
+            history = [
+                {
+                    "role": "user",
+                    "message": msg_text,
+                    "timestamp": msg.get("created_time", now.isoformat()),
+                },
+                {
+                    "role": "assistant",
+                    "message": matched_trigger.initial_message,
+                    "timestamp": now.isoformat(),
+                },
+            ]
+            self.lead_repo.update_conversation(lead.id, history)
+            self.lead_repo.mark_dm_sent(lead.id, sent_at=now)
+
+            self.session.commit()
+            new_leads += 1
+            logger.info(
+                f"Created lead #{lead.id} for @{from_username} "
+                f"(trigger {matched_trigger.id}, inbound message {message_id})"
+            )
+            self.notifier.notify_new_lead(lead, matched_trigger)
+
+        return new_leads
+
+    # ------------------------------------------------------------------
     # Conversation polling (AI follow-up)
     # ------------------------------------------------------------------
 
