@@ -83,15 +83,35 @@ class LeadService:
             ig_user_id = comment.get("ig_user_id", "")
             username = comment.get("username", "unknown")
 
-            # Send the initial private reply DM
-            try:
-                self.messenger.send_private_reply(comment_id, trigger.initial_message)
-            except Exception as e:
-                logger.error(
-                    f"Failed to send private reply to comment {comment_id} "
-                    f"(user: {username}): {e}"
-                )
-                continue
+            # Send a true DM first; fallback to private-reply if direct DM is blocked.
+            delivered = False
+            if ig_user_id:
+                try:
+                    self.messenger.send_message(ig_user_id, trigger.initial_message)
+                    delivered = True
+                    logger.info(
+                        f"Sent initial DM to @{username} (ig_user_id={ig_user_id}) "
+                        f"for comment {comment_id}"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Direct DM failed for @{username} (ig_user_id={ig_user_id}) "
+                        f"on comment {comment_id}: {e}. Trying private reply fallback."
+                    )
+
+            if not delivered:
+                try:
+                    self.messenger.send_private_reply(comment_id, trigger.initial_message)
+                    delivered = True
+                    logger.info(
+                        f"Sent private-reply fallback to @{username} for comment {comment_id}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to deliver initial outreach for comment {comment_id} "
+                        f"(user: {username}): {e}"
+                    )
+                    continue
 
             # Create lead record
             lead = self.lead_repo.create_lead(
