@@ -24,7 +24,34 @@ jobs:
       - name: Install dependencies
         run: pip install -e . --quiet
 
+      - name: Check for active triggers
+        id: trigger_check
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python - <<'PY'
+          import os
+          import psycopg2
+
+          conn = psycopg2.connect(os.environ["DATABASE_URL"])
+          cur = conn.cursor()
+          cur.execute("SELECT EXISTS (SELECT 1 FROM comment_triggers WHERE is_active = TRUE)")
+          has_triggers = cur.fetchone()[0]
+          cur.close()
+          conn.close()
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write(f"has_triggers={'true' if has_triggers else 'false'}\n")
+          PY
+
+      - name: Skip if no active triggers
+        if: steps.trigger_check.outputs.has_triggers != 'true'
+        run: |
+          echo "No active triggers found. Skipping poll."
+          exit 0
+
       - name: Poll for CAKE comments and send DMs
+        if: steps.trigger_check.outputs.has_triggers == 'true'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
