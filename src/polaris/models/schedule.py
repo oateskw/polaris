@@ -50,6 +50,11 @@ class ScheduledPost(Base, TimestampMixin):
     # APScheduler job ID
     job_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # First comment (posted 15 min after publish)
+    first_comment_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    first_comment_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    first_comment_posted: Mapped[bool] = mapped_column(default=False, nullable=False)
+
     # Relationships
     account: Mapped["InstagramAccount"] = relationship(
         "InstagramAccount",

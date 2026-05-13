@@ -86,6 +86,16 @@ class InstagramMessenger:
             logger.error(f"Failed to fetch conversations: {e}")
             return []
 
+    def reply_to_comment(self, comment_id: str, message: str) -> dict[str, Any]:
+        """Post a public reply to a comment."""
+        try:
+            response = self.client.reply_to_comment(comment_id, message)
+            logger.info(f"Posted public reply to comment {comment_id}")
+            return response
+        except Exception as e:
+            logger.error(f"Failed to reply to comment {comment_id}: {e}")
+            raise
+
     def send_message(self, recipient_ig_user_id: str, message: str) -> dict[str, Any]:
         """Send a DM to an Instagram user.
 

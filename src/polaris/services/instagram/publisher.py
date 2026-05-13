@@ -66,6 +66,9 @@ class InstagramPublisher:
         video_url: str,
         caption: str,
         media_type: str = "REELS",
+        audio_name: Optional[str] = None,
+        is_ai_generated_content: bool = False,
+        cover_url: Optional[str] = None,
     ) -> str:
         """Publish a video or reel.
 
@@ -73,6 +76,8 @@ class InstagramPublisher:
             video_url: URL of the video to publish (must be publicly accessible)
             caption: Caption for the post
             media_type: Type of video content (REELS or VIDEO)
+            audio_name: Instagram music library track name to attach
+            is_ai_generated_content: Whether to apply the AI-generated label
 
         Returns:
             Instagram media ID of the published post
@@ -82,6 +87,9 @@ class InstagramPublisher:
             video_url=video_url,
             caption=caption,
             media_type=media_type,
+            audio_name=audio_name,
+            is_ai_generated_content=is_ai_generated_content,
+            cover_url=cover_url,
         )
 
         # Wait for container to be ready (videos take longer)
@@ -169,7 +177,14 @@ class InstagramPublisher:
         if content.media_type == ContentType.IMAGE:
             return self.publish_image(content.media_url, caption)
         elif content.media_type in (ContentType.VIDEO, ContentType.REEL):
-            return self.publish_video(content.media_url, caption, media_type="REELS")
+            return self.publish_video(
+                content.media_url,
+                caption,
+                media_type="REELS",
+                audio_name=getattr(content, "audio_name", None),
+                is_ai_generated_content=getattr(content, "is_ai_generated_content", False),
+                cover_url=getattr(content, "cover_url", None),
+            )
         elif content.media_type == ContentType.CAROUSEL:
             image_urls = [u.strip() for u in content.media_url.split("|") if u.strip()]
             if not image_urls:

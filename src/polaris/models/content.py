@@ -54,6 +54,15 @@ class Content(Base, TimestampMixin):
     ai_generated: Mapped[bool] = mapped_column(default=False, nullable=False)
     ai_model: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
+    # Publishing options
+    audio_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # Instagram music track name
+    is_ai_generated_content: Mapped[bool] = mapped_column(default=False, nullable=False)  # AI label on post
+    cover_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Reel cover/thumbnail image URL
+
+    # Comment trigger — auto-created after publish
+    comment_trigger_keyword: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    comment_trigger_dm_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     # Status
     status: Mapped[ContentStatus] = mapped_column(
         Enum(ContentStatus),

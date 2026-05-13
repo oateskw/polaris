@@ -70,6 +70,7 @@ class ContentRepository(BaseRepository[Content]):
         topic: Optional[str] = None,
         ai_generated: bool = False,
         ai_model: Optional[str] = None,
+        cover_url: Optional[str] = None,
     ) -> Content:
         """Create new content."""
         return self.create(
@@ -81,6 +82,7 @@ class ContentRepository(BaseRepository[Content]):
             topic=topic,
             ai_generated=ai_generated,
             ai_model=ai_model,
+            cover_url=cover_url,
             status=ContentStatus.DRAFT,
         )
 

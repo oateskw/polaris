@@ -70,6 +70,42 @@ class Settings(BaseSettings):
     cloudinary_api_key: Optional[str] = Field(default=None, description="Cloudinary API key")
     cloudinary_api_secret: Optional[str] = Field(default=None, description="Cloudinary API secret")
 
+    # Email notifications (comma-separated for multiple recipients)
+    notification_email: Optional[str] = Field(
+        default=None,
+        description="Email address(es) to send lead notifications to. Separate multiple with commas.",
+    )
+    smtp_host: str = Field(default="smtp.gmail.com", description="SMTP host")
+    smtp_port: int = Field(default=587, description="SMTP port")
+    smtp_username: Optional[str] = Field(default=None, description="SMTP username (your Gmail address)")
+    smtp_password: Optional[str] = Field(default=None, description="SMTP password (Gmail App Password)")
+
+    # Yelp API (prospect discovery)
+    yelp_api_key: Optional[str] = Field(
+        default=None,
+        description="Yelp Fusion API key for prospect discovery",
+    )
+
+    # Google Places API (prospect discovery fallback)
+    google_places_api_key: Optional[str] = Field(
+        default=None,
+        description="Google Places API key for prospect discovery",
+    )
+
+    # Google Sheets (outreach tracking)
+    google_sheets_client_secrets_file: Optional[str] = Field(
+        default=None,
+        description="Path to Google OAuth client secrets JSON file (Desktop app credentials)",
+    )
+    google_sheets_token_file: str = Field(
+        default="google_sheets_token.json",
+        description="Path to store the OAuth token after first authorization",
+    )
+    google_sheets_spreadsheet_id: Optional[str] = Field(
+        default=None,
+        description="Google Sheets spreadsheet ID (from the sheet URL)",
+    )
+
     # Logging
     log_level: str = Field(
         default="INFO",
@@ -111,6 +147,23 @@ class Settings(BaseSettings):
     def is_cloudinary_configured(self) -> bool:
         """Check if Cloudinary credentials are configured."""
         return bool(self.cloudinary_cloud_name and self.cloudinary_api_key and self.cloudinary_api_secret)
+
+    @property
+    def notification_emails(self) -> list[str]:
+        """Return list of notification email addresses."""
+        if not self.notification_email:
+            return []
+        return [e.strip() for e in self.notification_email.split(",") if e.strip()]
+
+    @property
+    def is_sheets_configured(self) -> bool:
+        """Check if Google Sheets integration is configured."""
+        return bool(self.google_sheets_client_secrets_file and self.google_sheets_spreadsheet_id)
+
+    @property
+    def is_email_configured(self) -> bool:
+        """Check if email notifications are configured."""
+        return bool(self.notification_email and self.smtp_username and self.smtp_password)
 
 
 @lru_cache

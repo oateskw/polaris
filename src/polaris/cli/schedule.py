@@ -212,8 +212,8 @@ def cancel_schedule(
         session.close()
         raise typer.Exit(1)
 
-    if schedule.status != ScheduleStatus.PENDING:
-        console.print(f"[red]Error:[/red] Can only cancel pending schedules.")
+    if schedule.status not in (ScheduleStatus.PENDING, ScheduleStatus.PROCESSING):
+        console.print(f"[red]Error:[/red] Can only cancel pending or processing schedules.")
         session.close()
         raise typer.Exit(1)
 
@@ -249,8 +249,8 @@ def reschedule(
         session.close()
         raise typer.Exit(1)
 
-    if schedule.status not in (ScheduleStatus.PENDING, ScheduleStatus.FAILED):
-        console.print(f"[red]Error:[/red] Can only reschedule pending or failed schedules.")
+    if schedule.status not in (ScheduleStatus.PENDING, ScheduleStatus.FAILED, ScheduleStatus.PROCESSING):
+        console.print(f"[red]Error:[/red] Can only reschedule pending, processing, or failed schedules.")
         session.close()
         raise typer.Exit(1)
 
@@ -341,6 +341,165 @@ def retry_schedule(
     schedule_repo.commit()
 
     console.print(f"[green]Schedule {schedule_id} will retry at {retry_time.strftime('%Y-%m-%d %H:%M UTC')}.[/green]")
+    session.close()
+
+
+@schedule_app.command("publish-due")
+def publish_due():
+    """Publish all posts that are due now. Run this every minute via Task Scheduler."""
+    import logging
+    from logging.handlers import RotatingFileHandler
+    from pathlib import Path
+
+    log_path = Path(__file__).parents[4] / "logs" / "scheduler.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(str(log_path), maxBytes=5_000_000, backupCount=3)
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logging.basicConfig(level=logging.INFO, handlers=[handler])
+
+    import re
+    from datetime import datetime, timezone, timedelta
+    from polaris.services.instagram.client import InstagramClient
+    from polaris.services.instagram.publisher import InstagramPublisher
+    from polaris.models.content import ContentStatus
+    from polaris.repositories import AccountRepository, ContentRepository
+
+    def extract_cta(caption: str) -> str:
+        """Extract the CTA sentence from a caption (e.g. 'Comment "AUTOMATE" below')."""
+        # Look for sentences containing a quoted keyword + action word
+        pattern = re.compile(
+            r'[^.!?\n]*(?:comment|type|dm|reply|drop)[^.!?\n]*["\u201c\u201d][A-Z0-9]+["\u201c\u201d][^.!?\n]*[.!]?',
+            re.IGNORECASE,
+        )
+        match = pattern.search(caption)
+        if match:
+            return match.group(0).strip()
+        # Fallback: look for any sentence with a quoted all-caps word
+        pattern2 = re.compile(
+            r'[^.!?\n]*["\u201c\u201d][A-Z]{2,}["\u201c\u201d][^.!?\n]*[.!]?',
+            re.IGNORECASE,
+        )
+        match2 = pattern2.search(caption)
+        if match2:
+            return match2.group(0).strip()
+        return ""
+
+    session = get_session()
+    schedule_repo = ScheduleRepository(session)
+    now = datetime.now(timezone.utc)
+
+    # Mark posts stuck in PROCESSING for > 10 minutes as FAILED
+    # (prevents accidental double-publish if Task Scheduler overlaps with a manual run)
+    from polaris.models.schedule import ScheduledPost as ScheduledPostModel
+    from sqlalchemy import select as sa_select
+    stale_cutoff = now - timedelta(minutes=10)
+    stale = session.execute(
+        sa_select(ScheduledPostModel).where(
+            ScheduledPostModel.status == ScheduleStatus.PROCESSING,
+            ScheduledPostModel.updated_at <= stale_cutoff,
+        )
+    ).scalars().all()
+    for stale_post in stale:
+        stale_post.status = ScheduleStatus.FAILED
+        stale_post.error_message = "Timed out in PROCESSING state — possible partial publish. Verify on Instagram before retrying."
+        session.commit()
+        console.print(f"[yellow]Warning:[/yellow] Schedule #{stale_post.id} was stuck in PROCESSING — marked FAILED. Check Instagram before retrying.")
+
+    # Post any first comments that are due
+    from sqlalchemy import select as sa_select2
+    due_comments = session.execute(
+        sa_select2(ScheduledPostModel).where(
+            ScheduledPostModel.first_comment_posted == False,
+            ScheduledPostModel.first_comment_due_at != None,
+            ScheduledPostModel.first_comment_due_at <= now,
+            ScheduledPostModel.status == ScheduleStatus.PUBLISHED,
+        )
+    ).scalars().all()
+    for cp in due_comments:
+        try:
+            media_id = cp.content.instagram_media_id
+            if media_id and cp.first_comment_text:
+                c_client = InstagramClient(
+                    access_token=cp.account.access_token,
+                    instagram_user_id=cp.account.instagram_user_id,
+                )
+                c_client.post_comment(media_id, cp.first_comment_text)
+                c_client.close()
+                cp.first_comment_posted = True
+                session.commit()
+                console.print(f"  [green]First comment posted[/green] on schedule #{cp.id}: {cp.first_comment_text[:60]}")
+        except Exception as e:
+            logging.error(f"First comment failed for schedule #{cp.id}: {e}")
+            console.print(f"  [yellow]First comment failed[/yellow] schedule #{cp.id}: {e}")
+
+    pending = schedule_repo.get_pending()
+    due = []
+    for p in pending:
+        t = p.scheduled_time if p.scheduled_time.tzinfo else p.scheduled_time.replace(tzinfo=timezone.utc)
+        if t <= now:
+            due.append(p)
+
+    if not due:
+        console.print("[dim]No posts due.[/dim]")
+        session.close()
+        return
+
+    console.print(f"[bold blue]Publishing {len(due)} due post(s)...[/bold blue]")
+
+    for post in due:
+        content = post.content
+        account = post.account
+        try:
+            schedule_repo.session.refresh(post)
+            post.status = ScheduleStatus.PROCESSING
+            session.commit()
+
+            client = InstagramClient(
+                access_token=account.access_token,
+                instagram_user_id=account.instagram_user_id,
+            )
+            publisher = InstagramPublisher(client)
+            media_id = publisher.publish_content(content)
+
+            content.status = ContentStatus.PUBLISHED
+            content.instagram_media_id = media_id
+            post.status = ScheduleStatus.PUBLISHED
+            post.published_at = datetime.now(timezone.utc)
+
+            # Schedule first comment for 15 minutes after publish
+            cta = extract_cta(content.caption or "")
+            if cta:
+                post.first_comment_text = cta
+                post.first_comment_due_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+                post.first_comment_posted = False
+
+            session.commit()
+            console.print(f"  [green]Published[/green] schedule #{post.id} (content #{content.id}) — media {media_id}")
+            if cta:
+                console.print(f"  [dim]First comment scheduled in 15 min: {cta[:60]}[/dim]")
+
+            # Auto-create comment trigger if configured on the content
+            if content.comment_trigger_keyword and content.comment_trigger_dm_message:
+                from polaris.models.lead import CommentTrigger
+                trigger = CommentTrigger(
+                    account_id=account.id,
+                    post_instagram_media_id=media_id,
+                    keyword=content.comment_trigger_keyword.lower(),
+                    initial_message=content.comment_trigger_dm_message,
+                    follow_up_enabled=True,
+                    is_active=True,
+                )
+                session.add(trigger)
+                session.commit()
+                console.print(f"  [green]Comment trigger created[/green] — keyword: {content.comment_trigger_keyword.upper()}")
+        except Exception as e:
+            session.rollback()
+            post.status = ScheduleStatus.FAILED
+            post.error_message = str(e)
+            post.retry_count += 1
+            session.commit()
+            console.print(f"  [red]Failed[/red] schedule #{post.id}: {e}")
+
     session.close()
 
 

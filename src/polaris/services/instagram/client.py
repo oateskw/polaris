@@ -34,7 +34,7 @@ class AuthenticationError(InstagramClientError):
 class InstagramClient:
     """Client for Instagram Graph API with rate limiting."""
 
-    BASE_URL = "https://graph.instagram.com"
+    BASE_URL = "https://graph.facebook.com/v18.0"
     GRAPH_URL = "https://graph.facebook.com/v18.0"
 
     # Rate limits: 200 calls per hour per user
@@ -190,6 +190,9 @@ class InstagramClient:
         video_url: str,
         caption: str,
         media_type: str = "REELS",
+        audio_name: Optional[str] = None,
+        is_ai_generated_content: bool = False,
+        cover_url: Optional[str] = None,
     ) -> str:
         """Create a video container for publishing."""
         url = f"{self.GRAPH_URL}/{self.instagram_user_id}/media"
@@ -198,6 +201,12 @@ class InstagramClient:
             "caption": caption,
             "media_type": media_type,
         }
+        if audio_name:
+            params["audio_name"] = audio_name
+        if is_ai_generated_content:
+            params["is_ai_generated"] = "true"
+        if cover_url:
+            params["cover_url"] = cover_url
         response = self._make_request("POST", url, params=params)
         return response["id"]
 
@@ -248,6 +257,33 @@ class InstagramClient:
         response = self._make_request("POST", url, params=params)
         return response["id"]
 
+    def post_comment(self, media_id: str, message: str) -> str:
+        """Post a top-level comment on a media object.
+
+        Returns the comment ID.
+        Requires instagram_manage_comments permission.
+        """
+        url = f"{self.GRAPH_URL}/{media_id}/comments"
+        params = {"message": message}
+        response = self._make_request("POST", url, params=params)
+        return response["id"]
+
+    def reply_to_comment(self, comment_id: str, message: str) -> dict[str, Any]:
+        """Post a public reply to a comment.
+
+        Requires instagram_manage_comments permission.
+        """
+        url = f"{self.GRAPH_URL}/{comment_id}/replies"
+        params = {"message": message}
+        return self._make_request("POST", url, params=params)
+
+    def get_recent_media_ids(self, limit: int = 10) -> list[str]:
+        """Return the IDs of the most recent posts."""
+        url = f"{self.BASE_URL}/{self.instagram_user_id}/media"
+        params = {"fields": "id", "limit": limit}
+        response = self._make_request("GET", url, params=params)
+        return [item["id"] for item in response.get("data", [])]
+
     def get_hashtag_id(self, hashtag: str) -> str:
         """Get the ID for a hashtag."""
         url = f"{self.GRAPH_URL}/ig_hashtag_search"
@@ -266,7 +302,7 @@ class InstagramClient:
         url = f"{self.GRAPH_URL}/{hashtag_id}/recent_media"
         params = {
             "user_id": self.instagram_user_id,
-            "fields": "id,caption,media_type,like_count,comments_count",
+            "fields": "id,caption,media_type,like_count,comments_count,permalink,timestamp",
             "limit": limit,
         }
         response = self._make_request("GET", url, params=params)

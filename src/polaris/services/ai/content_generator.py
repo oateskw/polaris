@@ -1,6 +1,7 @@
 """AI-powered content generation for Instagram."""
 
 from dataclasses import dataclass
+import re
 from typing import Optional
 
 from polaris.services.ai.claude_client import ClaudeClient
@@ -40,13 +41,40 @@ class CarouselSlide:
     title: str
     subtitle: str
     image_prompt: str
+    bullets: list = None  # 3-5 short bullet points
+
+    def __post_init__(self):
+        if self.bullets is None:
+            self.bullets = []
 
 
 class ContentGenerator:
     """Generate Instagram content using Claude AI."""
 
+    TARGET_CAPTION_MIN_WORDS = 25
+    TARGET_CAPTION_MAX_WORDS = 45
+    HARD_CAPTION_MAX_WORDS = 60
+
     def __init__(self, client: Optional[ClaudeClient] = None):
         self.client = client or ClaudeClient()
+
+    def _enforce_caption_length(self, caption: str) -> str:
+        """Force captions into a concise, readable length.
+
+        Target range is 25-45 words. Hard cap is 60 words.
+        """
+        words = caption.split()
+        if len(words) <= self.HARD_CAPTION_MAX_WORDS:
+            return caption.strip()
+
+        trimmed_words = words[: self.HARD_CAPTION_MAX_WORDS]
+        trimmed = " ".join(trimmed_words).strip()
+
+        # Remove dangling punctuation and keep a clean ending.
+        trimmed = re.sub(r"[,:;\-]+$", "", trimmed)
+        if trimmed and trimmed[-1] not in ".!?":
+            trimmed += "."
+        return trimmed
 
     def generate_caption(
         self,
@@ -73,6 +101,7 @@ class ContentGenerator:
             prompt=caption_prompt,
             temperature=0.7,
         ).strip()
+        caption = self._enforce_caption_length(caption)
 
         # Generate hashtags
         hashtags = self.generate_hashtags(topic, caption[:200])
@@ -172,10 +201,11 @@ class ContentGenerator:
             improvement_focus=improvement_focus,
         )
 
-        return self.client.generate(
+        improved = self.client.generate(
             prompt=prompt,
             temperature=0.6,
         ).strip()
+        return self._enforce_caption_length(improved)
 
     def generate_carousel_slides(
         self,
@@ -201,19 +231,29 @@ Return ONLY this exact format, no extra text:
 SLIDE 1
 TITLE: <bold hook, max 6 words, ALL CAPS>
 SUBTITLE: <supporting line, max 10 words>
+BULLETS:
+- <short benefit or fact, max 8 words>
+- <short benefit or fact, max 8 words>
+- <short benefit or fact, max 8 words>
 IMAGE: <image generation prompt, realistic photography, no text in image>
 
 SLIDE 2
 TITLE: <bold hook, max 6 words, ALL CAPS>
 SUBTITLE: <supporting line, max 10 words>
+BULLETS:
+- <short benefit or fact, max 8 words>
+- <short benefit or fact, max 8 words>
+- <short benefit or fact, max 8 words>
 IMAGE: <image generation prompt, realistic photography, no text in image>
 
 (continue for all {num_slides} slides)
 
 Rules:
-- Slide 1: Hook/attention grabber
-- Middle slides: Problem -> Solution -> Process steps
-- Last slide: Clear CTA
+- Slide 1: Hook/attention grabber with 3 relatable pain points as bullets
+- Middle slides: Problem -> Solution -> Process steps, bullets show specific how-it-works details
+- Last slide: Clear CTA, bullets show next steps or quick wins
+- Bullets must be punchy and actionable, not generic
+- 3 to 5 bullets per slide max
 - Image prompts: warm lighting, real people/settings, no robots, no text"""
 
         response = self.client.generate(prompt=prompt, temperature=0.7, max_tokens=1500)
@@ -222,7 +262,8 @@ Rules:
     def _parse_carousel_slides(self, response: str) -> list[CarouselSlide]:
         """Parse carousel slides from AI response."""
         slides = []
-        current: dict[str, str] = {}
+        current: dict = {}
+        in_bullets = False
 
         for line in response.split("\n"):
             line = line.strip()
@@ -232,20 +273,33 @@ Rules:
                         title=current.get("title", ""),
                         subtitle=current.get("subtitle", ""),
                         image_prompt=current.get("image", ""),
+                        bullets=current.get("bullets", []),
                     ))
                 current = {}
+                in_bullets = False
             elif line.upper().startswith("TITLE:"):
                 current["title"] = line.split(":", 1)[1].strip()
+                in_bullets = False
             elif line.upper().startswith("SUBTITLE:"):
                 current["subtitle"] = line.split(":", 1)[1].strip()
+                in_bullets = False
+            elif line.upper().startswith("BULLETS:"):
+                current.setdefault("bullets", [])
+                in_bullets = True
             elif line.upper().startswith("IMAGE:"):
                 current["image"] = line.split(":", 1)[1].strip()
+                in_bullets = False
+            elif in_bullets and line.startswith("-"):
+                bullet = line.lstrip("-").strip()
+                if bullet:
+                    current.setdefault("bullets", []).append(bullet)
 
         if current and "title" in current:
             slides.append(CarouselSlide(
                 title=current.get("title", ""),
                 subtitle=current.get("subtitle", ""),
                 image_prompt=current.get("image", ""),
+                bullets=current.get("bullets", []),
             ))
 
         return slides

@@ -129,3 +129,20 @@ class LeadRepository(BaseRepository[Lead]):
     def get_contacted(self, account_id: int) -> list[Lead]:
         """Return all CONTACTED leads for an account (waiting for replies)."""
         return self.get_by_account(account_id, status=LeadStatus.CONTACTED)
+
+    def get_open_for_follow_up(self, account_id: int, limit: int = 200) -> list[Lead]:
+        """Return active leads that should keep receiving concierge follow-ups."""
+        stmt = (
+            select(Lead)
+            .where(
+                Lead.account_id == account_id,
+                Lead.status.in_([
+                    LeadStatus.CONTACTED,
+                    LeadStatus.REPLIED,
+                    LeadStatus.QUALIFIED,
+                ]),
+            )
+            .order_by(Lead.updated_at.desc())
+            .limit(limit)
+        )
+        return list(self.session.execute(stmt).scalars().all())

@@ -6,6 +6,7 @@ from polaris.models.base import Base
 from polaris.models.content import Content, ContentStatus
 from polaris.models.lead import CommentTrigger, Lead, LeadStatus
 from polaris.models.schedule import ScheduledPost, ScheduleStatus
+from polaris.models.comment_reply import CommentReply
 
 __all__ = [
     "Base",
@@ -18,4 +19,5 @@ __all__ = [
     "CommentTrigger",
     "Lead",
     "LeadStatus",
+    "CommentReply",
 ]

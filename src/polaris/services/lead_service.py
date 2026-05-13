@@ -1,6 +1,7 @@
 """Lead service — orchestrates comment polling, DM sending, and AI follow-up."""
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -12,6 +13,7 @@ from polaris.repositories.lead_repository import CommentTriggerRepository, LeadR
 from polaris.services.ai.lead_responder import LeadResponder
 from polaris.services.instagram.client import InstagramClient
 from polaris.services.instagram.messenger import InstagramMessenger
+from polaris.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,7 @@ class LeadService:
         self.trigger_repo = CommentTriggerRepository(session)
         self.lead_repo = LeadRepository(session)
         self.lead_responder = LeadResponder()
+        self.notifier = NotificationService()
 
     # ------------------------------------------------------------------
     # Comment trigger polling
@@ -117,6 +120,7 @@ class LeadService:
                 f"Created lead #{lead.id} for @{username} "
                 f"(trigger {trigger.id}, comment {comment_id})"
             )
+            self.notifier.notify_new_lead(lead, trigger)
 
         # Advance the polling cursor
         self.trigger_repo.update_last_polled(trigger.id, datetime.now(timezone.utc))
@@ -136,7 +140,7 @@ class LeadService:
         if not self._has_follow_up_enabled():
             return 0
 
-        leads = self.lead_repo.get_contacted(self.account.id)
+        leads = self.lead_repo.get_open_for_follow_up(self.account.id)
         if not leads:
             return 0
 
@@ -193,9 +197,11 @@ class LeadService:
 
         # Generate AI reply
         try:
+            post_context = self._build_post_context(lead)
             reply_text = self.lead_responder.generate_reply(
                 commenter_username=lead.commenter_username,
                 conversation_history=history,
+                post_topic=post_context,
             )
         except Exception as e:
             logger.error(f"AI reply generation failed for lead {lead.id}: {e}")
@@ -215,10 +221,18 @@ class LeadService:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
         self.lead_repo.update_conversation(lead.id, history)
-        self.lead_repo.update_status(lead.id, LeadStatus.REPLIED)
+        if self._has_qualification_intent(new_user_messages):
+            self.lead_repo.update_status(lead.id, LeadStatus.QUALIFIED)
+        elif lead.status != LeadStatus.QUALIFIED:
+            self.lead_repo.update_status(lead.id, LeadStatus.REPLIED)
         self.session.commit()
 
         logger.info(f"Sent AI reply to lead #{lead.id} (@{lead.commenter_username})")
+
+        # Notify owner that the lead replied
+        latest_user_msg = new_user_messages[-1]["text"] if new_user_messages else ""
+        self.notifier.notify_lead_replied(lead, latest_user_msg)
+
         return True
 
     def _find_thread(self, conversations: list, ig_user_id: str) -> dict | None:
@@ -265,3 +279,30 @@ class LeadService:
 
         # Return in chronological order
         return sorted(result, key=lambda m: m["timestamp"])
+
+    def _build_post_context(self, lead: Any) -> str:
+        """Build concise post/trigger context for AI concierge responses."""
+        parts: list[str] = []
+        if getattr(lead, "trigger", None):
+            keyword = getattr(lead.trigger, "keyword", "")
+            if keyword:
+                parts.append(f"Trigger keyword: {keyword}")
+        if lead.comment_text:
+            parts.append(f"Original comment: {lead.comment_text}")
+        if lead.post_instagram_media_id:
+            parts.append(f"Post media ID: {lead.post_instagram_media_id}")
+        return " | ".join(parts)
+
+    def _has_qualification_intent(self, new_user_messages: list[dict]) -> bool:
+        """Detect buyer intent from recent user messages (pricing/booking/tasting)."""
+        if not new_user_messages:
+            return False
+
+        intent_patterns = [
+            r"\bprice\b", r"\bpricing\b", r"\bcost\b", r"\bquote\b", r"\brate\b",
+            r"\bbook\b", r"\bbooking\b", r"\bschedule\b", r"\bavailable\b",
+            r"\btasting\b", r"\bconsult\b", r"\bconsultation\b",
+            r"\bdate\b", r"\bwedding date\b", r"\bpackage\b",
+        ]
+        combined = " ".join((m.get("text") or "") for m in new_user_messages).lower()
+        return any(re.search(pattern, combined) for pattern in intent_patterns)
