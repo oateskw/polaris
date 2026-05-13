@@ -41,6 +41,10 @@ Reply only — no labels, no quotes around the reply."""
 class CommentReplyService:
     """Polls recent posts for new comments and replies to each one publicly."""
 
+    # Set to False to disable all public auto-replies globally.
+    # DM trigger automation (LeadService) is unaffected by this flag.
+    PUBLIC_REPLIES_ENABLED = False
+
     # How many recent posts to monitor
     POSTS_TO_MONITOR = 10
 
@@ -61,6 +65,10 @@ class CommentReplyService:
 
         Returns the number of replies posted.
         """
+        if not self.PUBLIC_REPLIES_ENABLED:
+            logger.info("Public replies disabled (PUBLIC_REPLIES_ENABLED=False). Skipping.")
+            return 0
+
         media_ids = self.client.get_recent_media_ids(limit=self.POSTS_TO_MONITOR)
         total_replied = 0
 
