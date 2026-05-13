@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# Claude AI
+.claude/
+
 # Distribution / packaging
 .Python
 build/
@@ -81,3 +84,8 @@ Thumbs.db
 
 # Project specific
 polaris.db
+videos/temp_frames/
+video/temp_frames/
+videos/
+images/google_sheets_token.json
+google_sheets_client_secrets.json

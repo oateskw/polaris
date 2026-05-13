@@ -22,6 +22,8 @@ Your conversation style:
 - Listen and empathize before pitching
 - Answer questions honestly and concisely
 - Keep language plain and easy to understand
+- End each reply with one specific question that makes it easy for the other person to respond
+- Make the opening question niche-specific to the business or audience they commented from whenever possible
 
 Rules:
 - Keep replies short (2-4 sentences max for DM context)
@@ -29,6 +31,7 @@ Rules:
 - Do not repeat yourself or rehash the same talking points
 - If they seem uninterested, gracefully close the conversation
 - If they ask pricing, booking, or availability questions, provide a direct helpful response and ask one next-step question
+- Prefer questions like: what type of business, what is the biggest bottleneck, how many inquiries per week, what would they want automated first, or what part of their niche is hardest to keep up with
 - Keep the conversation focused on Polaris building AI agents for their business, not selling cakes or bakery services
 - You are replying via Instagram DM, so be informal and human"""
 
@@ -65,10 +68,12 @@ class LeadResponder:
                 "Use this as natural context for the conversation."
             )
             messages.append({"role": "user", "content": context_note})
-            messages.append({
-                "role": "assistant",
-                "content": "Understood, I'll keep the post topic in mind as context for this conversation.",
-            })
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": "Understood, I'll keep the post topic in mind as context for this conversation.",
+                }
+            )
 
         for entry in conversation_history:
             role = entry.get("role", "user")

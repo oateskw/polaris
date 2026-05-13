@@ -35,7 +35,9 @@ def _get_active_account(session, account_id=None):
 
 @leads_app.command("setup")
 def setup(
-    account_id: int = typer.Option(None, "--account", "-a", help="Account ID (uses first active if not specified)"),
+    account_id: int = typer.Option(
+        None, "--account", "-a", help="Account ID (uses first active if not specified)"
+    ),
 ):
     """Set up a new comment trigger on an Instagram post."""
     session = _get_session()
@@ -47,11 +49,15 @@ def setup(
         session.close()
         raise typer.Exit(1)
 
-    console.print(f"\n[bold blue]Setting up comment trigger for @{account.username}[/bold blue]\n")
+    console.print(
+        f"\n[bold blue]Setting up comment trigger for @{account.username}[/bold blue]\n"
+    )
 
     post_id = typer.prompt("Enter the Instagram media ID of the post to watch")
     keyword = typer.prompt("Trigger keyword (e.g. INFO)")
-    initial_message = typer.prompt("Initial DM message to send when keyword is detected")
+    initial_message = typer.prompt(
+        "Initial DM message to send when keyword is detected (make it niche-specific and end with one clear question)",
+    )
     follow_up = typer.confirm("Enable AI follow-up replies?", default=True)
 
     from polaris.repositories.lead_repository import CommentTriggerRepository
@@ -93,7 +99,9 @@ def triggers(
     account_triggers = list(session.execute(stmt).scalars().all())
 
     if not account_triggers:
-        console.print("No triggers configured. Run 'polaris leads setup' to create one.")
+        console.print(
+            "No triggers configured. Run 'polaris leads setup' to create one."
+        )
         session.close()
         return
 
@@ -106,7 +114,9 @@ def triggers(
     table.add_column("Last Polled")
 
     for t in account_triggers:
-        last_polled = t.last_polled_at.strftime("%Y-%m-%d %H:%M") if t.last_polled_at else "never"
+        last_polled = (
+            t.last_polled_at.strftime("%Y-%m-%d %H:%M") if t.last_polled_at else "never"
+        )
         table.add_row(
             str(t.id),
             t.post_instagram_media_id,
@@ -163,7 +173,12 @@ def resume(
 @leads_app.command("list")
 def list_leads(
     account_id: int = typer.Option(None, "--account", "-a", help="Account ID"),
-    status: str = typer.Option(None, "--status", "-s", help="Filter by status (NEW, CONTACTED, REPLIED, QUALIFIED, CLOSED)"),
+    status: str = typer.Option(
+        None,
+        "--status",
+        "-s",
+        help="Filter by status (NEW, CONTACTED, REPLIED, QUALIFIED, CLOSED)",
+    ),
     limit: int = typer.Option(50, "--limit", "-n", help="Max leads to show"),
 ):
     """List leads with their status and last message snippet."""
@@ -184,7 +199,9 @@ def list_leads(
         try:
             lead_status = LeadStatus(status.upper())
         except ValueError:
-            console.print(f"[red]Invalid status '{status}'. Choose from: NEW, CONTACTED, REPLIED, QUALIFIED, CLOSED[/red]")
+            console.print(
+                f"[red]Invalid status '{status}'. Choose from: NEW, CONTACTED, REPLIED, QUALIFIED, CLOSED[/red]"
+            )
             session.close()
             raise typer.Exit(1)
 
@@ -237,7 +254,9 @@ def list_leads(
 
 @leads_app.command("reply-comments")
 def reply_comments(
-    account_id: int = typer.Option(None, "--account", "-a", help="Account ID (uses first active if not specified)"),
+    account_id: int = typer.Option(
+        None, "--account", "-a", help="Account ID (uses first active if not specified)"
+    ),
 ):
     """Reply publicly to all new comments on recent posts using Claude.
 
@@ -281,7 +300,9 @@ def reply_comments(
 
 @leads_app.command("poll")
 def poll(
-    account_id: int = typer.Option(None, "--account", "-a", help="Account ID (uses first active if not specified)"),
+    account_id: int = typer.Option(
+        None, "--account", "-a", help="Account ID (uses first active if not specified)"
+    ),
 ):
     """Run one pass of comment trigger polling and AI conversation follow-ups.
 
@@ -347,7 +368,9 @@ def show(
         session.close()
         raise typer.Exit(1)
 
-    console.print(f"\n[bold blue]Lead #{lead.id} — @{lead.commenter_username}[/bold blue]")
+    console.print(
+        f"\n[bold blue]Lead #{lead.id} — @{lead.commenter_username}[/bold blue]"
+    )
     console.print(f"Status:    {lead.status.value}")
     console.print(f"Post ID:   {lead.post_instagram_media_id}")
     console.print(f"Comment:   {lead.comment_text}")
@@ -366,7 +389,11 @@ def show(
             message = entry.get("message", "")
             timestamp = entry.get("timestamp", "")
 
-            label = "[green]Polaris[/green]" if role == "assistant" else f"[cyan]@{lead.commenter_username}[/cyan]"
+            label = (
+                "[green]Polaris[/green]"
+                if role == "assistant"
+                else f"[cyan]@{lead.commenter_username}[/cyan]"
+            )
             console.print(f"\n  {label}  [dim]{timestamp[:16]}[/dim]")
             console.print(f"  {message}")
 
@@ -378,6 +405,7 @@ def show(
 # Outreach subcommands
 # ---------------------------------------------------------------------------
 
+
 def _get_sheets():
     from polaris.services.sheets_service import SheetsService
     from polaris.config import get_settings
@@ -385,17 +413,25 @@ def _get_sheets():
     settings = get_settings()
     if not settings.is_sheets_configured:
         console.print("[red]Google Sheets not configured.[/red]")
-        console.print("Set GOOGLE_SHEETS_CLIENT_SECRETS_FILE and GOOGLE_SHEETS_SPREADSHEET_ID in .env")
+        console.print(
+            "Set GOOGLE_SHEETS_CLIENT_SECRETS_FILE and GOOGLE_SHEETS_SPREADSHEET_ID in .env"
+        )
         raise typer.Exit(1)
     return SheetsService(settings)
 
 
 @outreach_app.command("prospect")
 def outreach_prospect(
-    business_type: str = typer.Option(..., "--type", "-t", help="Business type (e.g. roofer, plumber, hair salon)"),
-    location: str = typer.Option(..., "--location", "-l", help="City and state (e.g. 'Dallas TX')"),
+    business_type: str = typer.Option(
+        ..., "--type", "-t", help="Business type (e.g. roofer, plumber, hair salon)"
+    ),
+    location: str = typer.Option(
+        ..., "--location", "-l", help="City and state (e.g. 'Dallas TX')"
+    ),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results to fetch"),
-    source: str = typer.Option("google", "--source", "-s", help="Data source: google or yelp"),
+    source: str = typer.Option(
+        "google", "--source", "-s", help="Data source: google or yelp"
+    ),
 ):
     """Search for local businesses and find their Instagram handles and emails."""
     import webbrowser
@@ -410,8 +446,13 @@ def outreach_prospect(
             console.print("Set GOOGLE_PLACES_API_KEY in .env")
             raise typer.Exit(1)
         from polaris.services.places_service import PlacesService
-        console.print(f"\nSearching Google Places for [bold]{business_type}[/bold] in [bold]{location}[/bold]...")
-        console.print("[dim]Fetching websites to find Instagram handles and emails — this takes a moment...[/dim]\n")
+
+        console.print(
+            f"\nSearching Google Places for [bold]{business_type}[/bold] in [bold]{location}[/bold]..."
+        )
+        console.print(
+            "[dim]Fetching websites to find Instagram handles and emails — this takes a moment...[/dim]\n"
+        )
         with PlacesService(settings) as svc:
             results = svc.search_with_instagram(business_type, location, limit=limit)
     else:
@@ -420,17 +461,27 @@ def outreach_prospect(
             console.print("Set YELP_API_KEY in .env")
             raise typer.Exit(1)
         from polaris.services.yelp_service import YelpService
-        console.print(f"\nSearching Yelp for [bold]{business_type}[/bold] in [bold]{location}[/bold]...")
-        console.print("[dim]Fetching websites to find Instagram handles and emails — this takes a moment...[/dim]\n")
+
+        console.print(
+            f"\nSearching Yelp for [bold]{business_type}[/bold] in [bold]{location}[/bold]..."
+        )
+        console.print(
+            "[dim]Fetching websites to find Instagram handles and emails — this takes a moment...[/dim]\n"
+        )
         with YelpService(settings) as svc:
             results = svc.search_with_instagram(business_type, location, limit=limit)
 
     if not results:
-        console.print("[yellow]No results found. Try a different business type or location.[/yellow]")
+        console.print(
+            "[yellow]No results found. Try a different business type or location.[/yellow]"
+        )
         return
 
     # Display results table
-    table = Table(title=f"{business_type.title()} in {location} — {len(results)} results", show_lines=True)
+    table = Table(
+        title=f"{business_type.title()} in {location} — {len(results)} results",
+        show_lines=True,
+    )
     table.add_column("#", style="dim", width=3)
     table.add_column("Business Name", width=28)
     table.add_column("Rating", justify="center", width=7)
@@ -449,10 +500,14 @@ def outreach_prospect(
         else:
             instagram = "[dim]not found[/dim]"
         email = f"[cyan]{r['email']}[/cyan]" if r.get("email") else "[dim]-[/dim]"
-        table.add_row(str(i), r["name"], rating, reviews, instagram, email, r.get("phone", ""))
+        table.add_row(
+            str(i), r["name"], rating, reviews, instagram, email, r.get("phone", "")
+        )
 
     console.print(table)
-    console.print(f"\n[dim]Enter numbers to add to outreach (e.g. 1,3,5) or 'all'. Press Enter to skip.[/dim]")
+    console.print(
+        f"\n[dim]Enter numbers to add to outreach (e.g. 1,3,5) or 'all'. Press Enter to skip.[/dim]"
+    )
 
     selection = typer.prompt("Select", default="").strip()
     if not selection:
@@ -463,7 +518,9 @@ def outreach_prospect(
         selected_indices = list(range(len(results)))
     else:
         try:
-            selected_indices = [int(x.strip()) - 1 for x in selection.split(",") if x.strip()]
+            selected_indices = [
+                int(x.strip()) - 1 for x in selection.split(",") if x.strip()
+            ]
         except ValueError:
             console.print("[red]Invalid selection.[/red]")
             raise typer.Exit(1)
@@ -491,7 +548,11 @@ def outreach_prospect(
         if r.get("email"):
             console.print(f"  Email:     [cyan]{r['email']}[/cyan]")
         if r["instagram"]:
-            ig = f"[yellow]{r['instagram']}?[/yellow]" if r.get("instagram_guessed") else f"[green]{r['instagram']}[/green]"
+            ig = (
+                f"[yellow]{r['instagram']}?[/yellow]"
+                if r.get("instagram_guessed")
+                else f"[green]{r['instagram']}[/green]"
+            )
             console.print(f"  Instagram: {ig}")
 
         open_url = r.get("website") or r.get("yelp_url", "")
@@ -501,20 +562,56 @@ def outreach_prospect(
 
         # Determine preferred outreach channel based on business type
         bt = business_type.lower()
-        is_trades = any(w in bt for w in ["hvac", "plumber", "plumbing", "roofer", "roofing", "electrician", "contractor", "landscap", "lawn", "auto repair", "mechanic"])
-        is_visual = any(w in bt for w in ["photo", "salon", "medspa", "spa", "beauty", "gym", "trainer", "florist", "wedding"])
+        is_trades = any(
+            w in bt
+            for w in [
+                "hvac",
+                "plumber",
+                "plumbing",
+                "roofer",
+                "roofing",
+                "electrician",
+                "contractor",
+                "landscap",
+                "lawn",
+                "auto repair",
+                "mechanic",
+            ]
+        )
+        is_visual = any(
+            w in bt
+            for w in [
+                "photo",
+                "salon",
+                "medspa",
+                "spa",
+                "beauty",
+                "gym",
+                "trainer",
+                "florist",
+                "wedding",
+            ]
+        )
 
         if is_trades:
             primary_channel = "email"
-            channel_reason = "trades businesses check email between jobs — DM is a follow-up"
+            channel_reason = (
+                "trades businesses check email between jobs — DM is a follow-up"
+            )
         elif is_visual:
             primary_channel = "instagram"
-            channel_reason = "visual businesses live on Instagram — DM first, email as follow-up"
+            channel_reason = (
+                "visual businesses live on Instagram — DM first, email as follow-up"
+            )
         else:
             primary_channel = "email" if r.get("email") else "instagram"
-            channel_reason = "email available" if r.get("email") else "no email found, use Instagram"
+            channel_reason = (
+                "email available" if r.get("email") else "no email found, use Instagram"
+            )
 
-        console.print(f"\n  [bold]Recommended channel:[/bold] [yellow]{primary_channel.upper()}[/yellow] [dim]({channel_reason})[/dim]")
+        console.print(
+            f"\n  [bold]Recommended channel:[/bold] [yellow]{primary_channel.upper()}[/yellow] [dim]({channel_reason})[/dim]"
+        )
 
         # Build niche context for AI
         if any(w in bt for w in ["photo", "photographer", "wedding photo"]):
@@ -569,10 +666,18 @@ def outreach_prospect(
                     "EMAIL 2 SUBJECT:\n<subject>\n\nEMAIL 2 BODY:\n<body>"
                 )
                 try:
-                    response = claude.generate(email_prompt, system_prompt=polaris_system, max_tokens=500, temperature=0.8)
+                    response = claude.generate(
+                        email_prompt,
+                        system_prompt=polaris_system,
+                        max_tokens=500,
+                        temperature=0.8,
+                    )
+
                     # Parse sections
                     def extract_section(text, key):
-                        pattern = re.compile(rf'{re.escape(key)}\s*\n(.*?)(?=\nEMAIL \d|$)', re.DOTALL)
+                        pattern = re.compile(
+                            rf"{re.escape(key)}\s*\n(.*?)(?=\nEMAIL \d|$)", re.DOTALL
+                        )
                         m = pattern.search(text)
                         return m.group(1).strip() if m else ""
 
@@ -584,25 +689,34 @@ def outreach_prospect(
                     console.print(f"\n  [bold]Email 1 — Send to {r['email']}:[/bold]")
                     console.print(f"  [dim]Subject:[/dim] {e1_subject}")
                     console.print(f"  {e1_body}\n")
-                    console.print(f"  [bold]Email 2 — Send 3 days later if no reply:[/bold]")
+                    console.print(
+                        f"  [bold]Email 2 — Send 3 days later if no reply:[/bold]"
+                    )
                     console.print(f"  [dim]Subject:[/dim] {e2_subject}")
                     console.print(f"  {e2_body}\n")
 
                     try:
                         import pyperclip
+
                         pyperclip.copy(f"Subject: {e1_subject}\n\n{e1_body}")
                         console.print("  [dim]Email 1 copied to clipboard.[/dim]")
                     except Exception:
                         pass
                 except ClaudeClientError:
-                    console.print("  [yellow]Could not generate email — skipping.[/yellow]")
+                    console.print(
+                        "  [yellow]Could not generate email — skipping.[/yellow]"
+                    )
 
             # Generate DM sequence (always for visual, as follow-up for trades)
             handle = r["instagram"] or ""
             handle = typer.prompt("  Instagram handle", default=handle).strip()
 
             if handle:
-                label = "DM sequence" if primary_channel == "instagram" else "Instagram follow-up DM (use if no email reply)"
+                label = (
+                    "DM sequence"
+                    if primary_channel == "instagram"
+                    else "Instagram follow-up DM (use if no email reply)"
+                )
                 console.print(f"\n  [dim]Generating {label}...[/dim]")
                 dm_prompt = (
                     f"Write a two-message cold Instagram DM sequence for this prospect:\n\n{prospect_info}\n"
@@ -614,12 +728,21 @@ def outreach_prospect(
                     "Format exactly like this:\nDM 1:\n<message>\n\nDM 2:\n<message>"
                 )
                 try:
-                    response = claude.generate(dm_prompt, system_prompt=polaris_system, max_tokens=300, temperature=0.8)
+                    response = claude.generate(
+                        dm_prompt,
+                        system_prompt=polaris_system,
+                        max_tokens=300,
+                        temperature=0.8,
+                    )
                     parts = response.strip().split("DM 2:")
                     dm1 = parts[0].replace("DM 1:", "").strip() if parts else ""
                     dm2 = parts[1].strip() if len(parts) > 1 else ""
 
-                    dm_label = "DM 1 — Send this first" if primary_channel == "instagram" else "DM 1 — Send if no email reply after 3 days"
+                    dm_label = (
+                        "DM 1 — Send this first"
+                        if primary_channel == "instagram"
+                        else "DM 1 — Send if no email reply after 3 days"
+                    )
                     console.print(f"\n  [bold]{dm_label}:[/bold]")
                     console.print(f"  [white]{dm1}[/white]")
                     console.print(f"\n  [bold]DM 2 — Send after they reply:[/bold]")
@@ -628,12 +751,15 @@ def outreach_prospect(
                     if primary_channel == "instagram":
                         try:
                             import pyperclip
+
                             pyperclip.copy(dm1)
                             console.print("  [dim]DM 1 copied to clipboard.[/dim]")
                         except Exception:
                             pass
                 except ClaudeClientError:
-                    console.print("  [yellow]Could not generate DM — skipping.[/yellow]")
+                    console.print(
+                        "  [yellow]Could not generate DM — skipping.[/yellow]"
+                    )
         else:
             handle = r["instagram"] or ""
             handle = typer.prompt("  Instagram handle", default=handle).strip()
@@ -645,7 +771,9 @@ def outreach_prospect(
             if typer.confirm(f"  Open {handle} on Instagram?", default=True):
                 webbrowser.open(f"https://www.instagram.com/{handle.lstrip('@')}/")
 
-        sent = typer.confirm(f"  Did you send the {primary_channel} outreach?", default=False)
+        sent = typer.confirm(
+            f"  Did you send the {primary_channel} outreach?", default=False
+        )
         if not sent:
             console.print("[dim]  Not logged — skipped.[/dim]")
             continue
@@ -655,7 +783,11 @@ def outreach_prospect(
         notes = typer.prompt("  Notes (optional)", default="").strip()
 
         address_parts = r["address"].split(",")
-        loc = ", ".join(address_parts[1:3]).strip() if len(address_parts) >= 3 else location
+        loc = (
+            ", ".join(address_parts[1:3]).strip()
+            if len(address_parts) >= 3
+            else location
+        )
 
         sheets.add_prospect(
             handle=handle,
@@ -669,14 +801,20 @@ def outreach_prospect(
         console.print(f"  [green]Logged:[/green] {handle} — {r['name']}")
         added += 1
 
-    console.print(f"\n[bold green]{added} prospect(s) added to your outreach sheet.[/bold green]")
+    console.print(
+        f"\n[bold green]{added} prospect(s) added to your outreach sheet.[/bold green]"
+    )
 
 
 @outreach_app.command("find")
 def outreach_find(
-    hashtag: str = typer.Option(..., "--hashtag", "-h", help="Hashtag to search (without #)"),
+    hashtag: str = typer.Option(
+        ..., "--hashtag", "-h", help="Hashtag to search (without #)"
+    ),
     limit: int = typer.Option(20, "--limit", "-n", help="Number of posts to fetch"),
-    business_type: str = typer.Option("", "--type", "-t", help="Business type to pre-fill (e.g. Roofer)"),
+    business_type: str = typer.Option(
+        "", "--type", "-t", help="Business type to pre-fill (e.g. Roofer)"
+    ),
     account_id: int = typer.Option(None, "--account", "-a", help="Account ID"),
 ):
     """Search a hashtag for prospects, review them, and add to outreach list."""
@@ -744,7 +882,9 @@ def outreach_find(
         table.add_row(str(i), snippet, likes, comments, posted)
 
     console.print(table)
-    console.print("\n[dim]Enter the numbers you want to review (e.g. 1,3,5) or 'all'. Press Enter to skip all.[/dim]")
+    console.print(
+        "\n[dim]Enter the numbers you want to review (e.g. 1,3,5) or 'all'. Press Enter to skip all.[/dim]"
+    )
 
     selection = typer.prompt("Select", default="").strip()
     if not selection:
@@ -756,7 +896,9 @@ def outreach_find(
         selected_indices = list(range(len(posts)))
     else:
         try:
-            selected_indices = [int(x.strip()) - 1 for x in selection.split(",") if x.strip()]
+            selected_indices = [
+                int(x.strip()) - 1 for x in selection.split(",") if x.strip()
+            ]
         except ValueError:
             console.print("[red]Invalid selection.[/red]")
             session.close()
@@ -781,7 +923,9 @@ def outreach_find(
             if open_it:
                 webbrowser.open(permalink)
 
-        handle = typer.prompt("Instagram handle (e.g. @joes_roofing), or Enter to skip", default="").strip()
+        handle = typer.prompt(
+            "Instagram handle (e.g. @joes_roofing), or Enter to skip", default=""
+        ).strip()
         if not handle:
             console.print("[dim]Skipped.[/dim]")
             continue
@@ -803,17 +947,27 @@ def outreach_find(
         console.print(f"[green]Added:[/green] {handle} — {name}")
         added += 1
 
-    console.print(f"\n[bold green]{added} prospect(s) added to your outreach sheet.[/bold green]")
+    console.print(
+        f"\n[bold green]{added} prospect(s) added to your outreach sheet.[/bold green]"
+    )
     session.close()
 
 
 @outreach_app.command("add")
 def outreach_add(
-    handle: str = typer.Option(..., "--handle", "-H", help="Instagram handle (e.g. @joes_roofing)"),
+    handle: str = typer.Option(
+        ..., "--handle", "-H", help="Instagram handle (e.g. @joes_roofing)"
+    ),
     name: str = typer.Option(..., "--name", "-n", help="Business name"),
-    type_: str = typer.Option(..., "--type", "-t", help="Business type (e.g. Roofer, Salon, Plumber)"),
-    location: str = typer.Option(..., "--location", "-l", help="City/state (e.g. 'Dallas TX')"),
-    followers: str = typer.Option("", "--followers", "-f", help="Follower count (e.g. 1.2k)"),
+    type_: str = typer.Option(
+        ..., "--type", "-t", help="Business type (e.g. Roofer, Salon, Plumber)"
+    ),
+    location: str = typer.Option(
+        ..., "--location", "-l", help="City/state (e.g. 'Dallas TX')"
+    ),
+    followers: str = typer.Option(
+        "", "--followers", "-f", help="Follower count (e.g. 1.2k)"
+    ),
     email: str = typer.Option("", "--email", "-e", help="Contact email address"),
     notes: str = typer.Option("", "--notes", help="Optional notes"),
 ):
@@ -901,7 +1055,9 @@ def outreach_stats(
 
     if total_dms:
         reply_rate = round(total_replies / total_dms * 100)
-        console.print(f"\nReply rate: [bold]{reply_rate}%[/bold]  ({total_replies}/{total_dms})")
+        console.print(
+            f"\nReply rate: [bold]{reply_rate}%[/bold]  ({total_replies}/{total_dms})"
+        )
 
 
 @outreach_app.command("pipeline")
@@ -953,10 +1109,18 @@ def outreach_pipeline():
 @outreach_app.command("dm")
 def outreach_dm(
     name: str = typer.Option(..., "--name", "-n", help="Business name"),
-    type_: str = typer.Option(..., "--type", "-t", help="Business type (e.g. Hair Salon, Plumber)"),
-    location: str = typer.Option(..., "--location", "-l", help="City/state (e.g. 'Ashburn VA')"),
-    handle: str = typer.Option("", "--handle", "-H", help="Instagram handle (optional, for personalization)"),
-    notes: str = typer.Option("", "--notes", help="Anything specific you noticed about them"),
+    type_: str = typer.Option(
+        ..., "--type", "-t", help="Business type (e.g. Hair Salon, Plumber)"
+    ),
+    location: str = typer.Option(
+        ..., "--location", "-l", help="City/state (e.g. 'Ashburn VA')"
+    ),
+    handle: str = typer.Option(
+        "", "--handle", "-H", help="Instagram handle (optional, for personalization)"
+    ),
+    notes: str = typer.Option(
+        "", "--notes", help="Anything specific you noticed about them"
+    ),
 ):
     """Generate a two-message cold outreach DM sequence using Claude."""
     from polaris.services.ai.claude_client import ClaudeClient, ClaudeClientError
@@ -1013,7 +1177,9 @@ def outreach_dm(
     try:
         claude = ClaudeClient()
         console.print("\n[dim]Generating...[/dim]\n")
-        response = claude.generate(prompt, system_prompt=system_prompt, max_tokens=300, temperature=0.8)
+        response = claude.generate(
+            prompt, system_prompt=system_prompt, max_tokens=300, temperature=0.8
+        )
 
         # Parse and display
         parts = response.strip().split("DM 2:")
@@ -1027,6 +1193,7 @@ def outreach_dm(
 
         try:
             import pyperclip
+
             pyperclip.copy(f"DM 1:\n{dm1}\n\nDM 2:\n{dm2}")
             console.print("[dim]Both messages copied to clipboard.[/dim]")
         except Exception:
