@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from polaris.models.account import InstagramAccount
 from polaris.models.comment_reply import CommentReply
+from polaris.repositories.lead_repository import CommentTriggerRepository
 from polaris.services.ai.claude_client import ClaudeClient
 from polaris.services.instagram.client import InstagramClient
 from polaris.services.instagram.messenger import InstagramMessenger
@@ -46,6 +47,7 @@ class CommentReplyService:
     def __init__(self, session: Session, account: InstagramAccount):
         self.session = session
         self.account = account
+        self.trigger_repo = CommentTriggerRepository(session)
         self.client = InstagramClient(
             access_token=account.access_token,
             instagram_user_id=account.instagram_user_id,
@@ -74,6 +76,7 @@ class CommentReplyService:
         """Fetch comments on a post and reply to any we haven't replied to yet."""
         comments = self.messenger.get_post_comments(media_id)
         replied = 0
+        trigger_keywords = self._active_trigger_keywords()
 
         for comment in comments:
             comment_id = comment.get("id", "")
@@ -85,6 +88,14 @@ class CommentReplyService:
 
             # Skip our own comments
             if username == self.account.username:
+                continue
+
+            # DM automation owns trigger-keyword comments; do not also reply publicly.
+            if self._matches_trigger_keyword(text, trigger_keywords):
+                logger.info(
+                    f"Skipping public reply for trigger-matching comment {comment_id} "
+                    f"(@{username})"
+                )
                 continue
 
             # Skip if already replied
@@ -103,6 +114,22 @@ class CommentReplyService:
                 logger.error(f"Failed to reply to comment {comment_id} (@{username}): {e}")
 
         return replied
+
+    def _active_trigger_keywords(self) -> set[str]:
+        """Return active trigger keywords for this account, normalized to lowercase."""
+        triggers = self.trigger_repo.get_active_for_account(self.account.id)
+        return {
+            (t.keyword or "").strip().lower()
+            for t in triggers
+            if (t.keyword or "").strip()
+        }
+
+    def _matches_trigger_keyword(self, comment_text: str, keywords: set[str]) -> bool:
+        """Return True if comment text contains any active trigger keyword."""
+        if not keywords:
+            return False
+        lowered = comment_text.lower()
+        return any(keyword in lowered for keyword in keywords)
 
     def _already_replied(self, comment_id: str) -> bool:
         """Check if we've already replied to this comment."""
