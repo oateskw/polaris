@@ -91,6 +91,7 @@ def triggers(
         console.print("[red]No active account found.[/red]")
         session.close()
         raise typer.Exit(1)
+    active_account_id = account.id
 
     from sqlalchemy import select
     from polaris.models.lead import CommentTrigger
@@ -329,6 +330,8 @@ def poll(
 
     from polaris.services.lead_service import LeadService
 
+    active_account_id = account.id
+
     try:
         service = LeadService(session, account)
 
@@ -346,7 +349,8 @@ def poll(
 
     except Exception as e:
         console.print(f"[red]Poll error:[/red] {e}")
-        logging.error(f"Poll failed for account {account.id}: {e}")
+        session.rollback()
+        logging.error(f"Poll failed for account {active_account_id}: {e}")
         session.close()
         raise typer.Exit(1)
 
@@ -390,7 +394,9 @@ def poll_inbound(
 
         new_leads = service.poll_inbound_dm_triggers()
         if new_leads:
-            console.print(f"[green]{new_leads} new inbound DM lead(s) detected and responded to.[/green]")
+            console.print(
+                f"[green]{new_leads} new inbound DM lead(s) detected and responded to.[/green]"
+            )
         else:
             console.print("[dim]No new inbound trigger matches.[/dim]")
 
@@ -402,7 +408,8 @@ def poll_inbound(
 
     except Exception as e:
         console.print(f"[red]Poll error:[/red] {e}")
-        logging.error(f"Poll failed for account {account.id}: {e}")
+        session.rollback()
+        logging.error(f"Poll failed for account {active_account_id}: {e}")
         session.close()
         raise typer.Exit(1)
 

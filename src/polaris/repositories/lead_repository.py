@@ -60,7 +60,9 @@ class CommentTriggerRepository(BaseRepository[CommentTrigger]):
         """Set is_active=True on a trigger."""
         return self.update(trigger_id, is_active=True)
 
-    def update_last_polled(self, trigger_id: int, timestamp: datetime) -> Optional[CommentTrigger]:
+    def update_last_polled(
+        self, trigger_id: int, timestamp: datetime
+    ) -> Optional[CommentTrigger]:
         """Update last_polled_at cursor."""
         return self.update(trigger_id, last_polled_at=timestamp)
 
@@ -94,6 +96,33 @@ class LeadRepository(BaseRepository[Lead]):
         stmt = select(Lead).where(Lead.inbound_message_id == message_id)
         return self.session.execute(stmt).scalars().first()
 
+    def get_open_by_user_and_trigger(
+        self,
+        account_id: int,
+        trigger_id: int,
+        commenter_ig_user_id: str,
+    ) -> Optional[Lead]:
+        """Return latest open lead for a specific user+trigger pair."""
+        stmt = (
+            select(Lead)
+            .where(
+                Lead.account_id == account_id,
+                Lead.trigger_id == trigger_id,
+                Lead.commenter_ig_user_id == commenter_ig_user_id,
+                Lead.status.in_(
+                    [
+                        LeadStatus.NEW,
+                        LeadStatus.CONTACTED,
+                        LeadStatus.REPLIED,
+                        LeadStatus.QUALIFIED,
+                    ]
+                ),
+            )
+            .order_by(Lead.updated_at.desc())
+            .limit(1)
+        )
+        return self.session.execute(stmt).scalars().first()
+
     def create_lead(
         self,
         account_id: int,
@@ -119,11 +148,15 @@ class LeadRepository(BaseRepository[Lead]):
             status=LeadStatus.NEW,
         )
 
-    def mark_dm_sent(self, lead_id: int, sent_at: Optional[datetime] = None) -> Optional[Lead]:
+    def mark_dm_sent(
+        self, lead_id: int, sent_at: Optional[datetime] = None
+    ) -> Optional[Lead]:
         """Mark a lead's initial DM as sent."""
         if sent_at is None:
             sent_at = datetime.now(timezone.utc)
-        return self.update(lead_id, dm_sent=True, dm_sent_at=sent_at, status=LeadStatus.CONTACTED)
+        return self.update(
+            lead_id, dm_sent=True, dm_sent_at=sent_at, status=LeadStatus.CONTACTED
+        )
 
     def update_conversation(self, lead_id: int, history: list) -> Optional[Lead]:
         """Replace the full conversation_history for a lead."""
@@ -143,11 +176,13 @@ class LeadRepository(BaseRepository[Lead]):
             select(Lead)
             .where(
                 Lead.account_id == account_id,
-                Lead.status.in_([
-                    LeadStatus.CONTACTED,
-                    LeadStatus.REPLIED,
-                    LeadStatus.QUALIFIED,
-                ]),
+                Lead.status.in_(
+                    [
+                        LeadStatus.CONTACTED,
+                        LeadStatus.REPLIED,
+                        LeadStatus.QUALIFIED,
+                    ]
+                ),
             )
             .order_by(Lead.updated_at.desc())
             .limit(limit)

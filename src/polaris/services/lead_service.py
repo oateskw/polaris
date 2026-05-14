@@ -9,7 +9,10 @@ from sqlalchemy.orm import Session
 
 from polaris.models.account import InstagramAccount
 from polaris.models.lead import LeadStatus
-from polaris.repositories.lead_repository import CommentTriggerRepository, LeadRepository
+from polaris.repositories.lead_repository import (
+    CommentTriggerRepository,
+    LeadRepository,
+)
 from polaris.services.ai.lead_responder import LeadResponder
 from polaris.services.instagram.client import InstagramClient
 from polaris.services.instagram.messenger import InstagramMessenger
@@ -102,7 +105,9 @@ class LeadService:
 
             if not delivered:
                 try:
-                    self.messenger.send_private_reply(comment_id, trigger.initial_message)
+                    self.messenger.send_private_reply(
+                        comment_id, trigger.initial_message
+                    )
                     delivered = True
                     logger.info(
                         f"Sent private-reply fallback to @{username} for comment {comment_id}"
@@ -128,11 +133,13 @@ class LeadService:
 
             # Record initial DM in conversation history
             now = datetime.now(timezone.utc)
-            history = [{
-                "role": "assistant",
-                "message": trigger.initial_message,
-                "timestamp": now.isoformat(),
-            }]
+            history = [
+                {
+                    "role": "assistant",
+                    "message": trigger.initial_message,
+                    "timestamp": now.isoformat(),
+                }
+            ]
             self.lead_repo.update_conversation(lead.id, history)
             self.lead_repo.mark_dm_sent(lead.id, sent_at=now)
 
@@ -184,7 +191,9 @@ class LeadService:
         keyword_to_trigger = {t.keyword.lower(): t for t in triggers}
 
         for msg in messages:
-            msg_text = msg.get("text", "").lower()
+            msg_text_raw = msg.get("text", "")
+            msg_text = msg_text_raw.lower()
+            msg_text_normalized = msg_text.strip()
             from_user_id = msg.get("from_ig_user_id", "")
             from_username = msg.get("from_username", "unknown")
             message_id = msg.get("id", "")
@@ -195,7 +204,7 @@ class LeadService:
             # Check if this message matches any active trigger
             matched_trigger = None
             for keyword, trigger in keyword_to_trigger.items():
-                if keyword in msg_text:
+                if msg_text_normalized == keyword:
                     matched_trigger = trigger
                     break
 
@@ -208,9 +217,25 @@ class LeadService:
                 logger.debug(f"Skipping duplicate inbound message {message_id}")
                 continue
 
+            # If this user already has an active lead for this trigger, do not
+            # restart outreach; let poll_conversations handle ongoing replies.
+            open_lead = self.lead_repo.get_open_by_user_and_trigger(
+                account_id=self.account.id,
+                trigger_id=matched_trigger.id,
+                commenter_ig_user_id=from_user_id,
+            )
+            if open_lead:
+                logger.debug(
+                    f"Skipping new lead for @{from_username} on trigger {matched_trigger.id}; "
+                    f"existing open lead #{open_lead.id}"
+                )
+                continue
+
             # Send initial response
             try:
-                self.messenger.send_message(from_user_id, matched_trigger.initial_message)
+                self.messenger.send_message(
+                    from_user_id, matched_trigger.initial_message
+                )
                 logger.info(
                     f"Sent initial DM response to @{from_username} (ig_user_id={from_user_id}) "
                     f"for inbound message {message_id}"
@@ -230,7 +255,7 @@ class LeadService:
                 commenter_username=from_username,
                 post_instagram_media_id="0",  # Placeholder; inbound DM doesn't have a post
                 comment_id=None,
-                comment_text=msg_text,
+                comment_text=msg_text_raw,
                 inbound_message_id=message_id,
             )
 
@@ -239,7 +264,7 @@ class LeadService:
             history = [
                 {
                     "role": "user",
-                    "message": msg_text,
+                    "message": msg_text_raw,
                     "timestamp": msg.get("created_time", now.isoformat()),
                 },
                 {
@@ -322,11 +347,13 @@ class LeadService:
 
         # Append new user messages to history
         for msg in new_user_messages:
-            history.append({
-                "role": "user",
-                "message": msg["text"],
-                "timestamp": msg["timestamp"],
-            })
+            history.append(
+                {
+                    "role": "user",
+                    "message": msg["text"],
+                    "timestamp": msg["timestamp"],
+                }
+            )
 
         # Generate AI reply
         try:
@@ -348,11 +375,13 @@ class LeadService:
             return False
 
         # Update history and status
-        history.append({
-            "role": "assistant",
-            "message": reply_text,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        history.append(
+            {
+                "role": "assistant",
+                "message": reply_text,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         self.lead_repo.update_conversation(lead.id, history)
         if self._has_qualification_intent(new_user_messages):
             self.lead_repo.update_status(lead.id, LeadStatus.QUALIFIED)
@@ -405,10 +434,12 @@ class LeadService:
             if since_timestamp and msg_time <= since_timestamp:
                 continue
 
-            result.append({
-                "text": msg.get("message", ""),
-                "timestamp": msg_time,
-            })
+            result.append(
+                {
+                    "text": msg.get("message", ""),
+                    "timestamp": msg_time,
+                }
+            )
 
         # Return in chronological order
         return sorted(result, key=lambda m: m["timestamp"])
@@ -432,10 +463,21 @@ class LeadService:
             return False
 
         intent_patterns = [
-            r"\bprice\b", r"\bpricing\b", r"\bcost\b", r"\bquote\b", r"\brate\b",
-            r"\bbook\b", r"\bbooking\b", r"\bschedule\b", r"\bavailable\b",
-            r"\btasting\b", r"\bconsult\b", r"\bconsultation\b",
-            r"\bdate\b", r"\bwedding date\b", r"\bpackage\b",
+            r"\bprice\b",
+            r"\bpricing\b",
+            r"\bcost\b",
+            r"\bquote\b",
+            r"\brate\b",
+            r"\bbook\b",
+            r"\bbooking\b",
+            r"\bschedule\b",
+            r"\bavailable\b",
+            r"\btasting\b",
+            r"\bconsult\b",
+            r"\bconsultation\b",
+            r"\bdate\b",
+            r"\bwedding date\b",
+            r"\bpackage\b",
         ]
         combined = " ".join((m.get("text") or "") for m in new_user_messages).lower()
         return any(re.search(pattern, combined) for pattern in intent_patterns)

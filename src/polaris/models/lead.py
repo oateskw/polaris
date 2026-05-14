@@ -4,7 +4,16 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, JSON, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from polaris.models.base import Base, TimestampMixin
@@ -27,13 +36,19 @@ class CommentTrigger(Base, TimestampMixin):
     __tablename__ = "comment_triggers"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    account_id: Mapped[int] = mapped_column(ForeignKey("instagram_accounts.id"), nullable=False)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("instagram_accounts.id"), nullable=False
+    )
     post_instagram_media_id: Mapped[str] = mapped_column(String(100), nullable=False)
     keyword: Mapped[str] = mapped_column(String(100), nullable=False)
     initial_message: Mapped[str] = mapped_column(Text, nullable=False)
-    follow_up_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    follow_up_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    last_polled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_polled_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     account: Mapped["InstagramAccount"] = relationship("InstagramAccount")
@@ -57,16 +72,24 @@ class Lead(Base, TimestampMixin):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    account_id: Mapped[int] = mapped_column(ForeignKey("instagram_accounts.id"), nullable=False)
-    trigger_id: Mapped[int] = mapped_column(ForeignKey("comment_triggers.id"), nullable=False)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("instagram_accounts.id"), nullable=False
+    )
+    trigger_id: Mapped[int] = mapped_column(
+        ForeignKey("comment_triggers.id"), nullable=False
+    )
     commenter_ig_user_id: Mapped[str] = mapped_column(String(100), nullable=False)
     commenter_username: Mapped[str] = mapped_column(String(100), nullable=False)
     post_instagram_media_id: Mapped[str] = mapped_column(String(100), nullable=False)
     comment_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     comment_text: Mapped[str] = mapped_column(Text, nullable=False)
-    inbound_message_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    inbound_message_id: Mapped[Optional[str]] = mapped_column(
+        String(512), nullable=True
+    )
     dm_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    dm_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    dm_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     conversation_history: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     status: Mapped[LeadStatus] = mapped_column(
         Enum(LeadStatus),
@@ -76,7 +99,9 @@ class Lead(Base, TimestampMixin):
 
     # Relationships
     account: Mapped["InstagramAccount"] = relationship("InstagramAccount")
-    trigger: Mapped["CommentTrigger"] = relationship("CommentTrigger", back_populates="leads")
+    trigger: Mapped["CommentTrigger"] = relationship(
+        "CommentTrigger", back_populates="leads"
+    )
 
     def __repr__(self) -> str:
         return f"<Lead(id={self.id}, username='{self.commenter_username}', status='{self.status}')>"
