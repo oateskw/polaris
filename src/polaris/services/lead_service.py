@@ -189,6 +189,7 @@ class LeadService:
 
         new_leads = 0
         keyword_to_trigger = {t.keyword.lower(): t for t in triggers}
+        default_trigger = next((t for t in triggers if t.follow_up_enabled), triggers[0])
 
         for msg in messages:
             msg_text_raw = msg.get("text", "")
@@ -208,34 +209,67 @@ class LeadService:
                     matched_trigger = trigger
                     break
 
-            if not matched_trigger:
-                continue
-
             # Deduplication: skip if we already have a lead for this message
             existing = self.lead_repo.get_by_inbound_message_id(message_id)
             if existing:
                 logger.debug(f"Skipping duplicate inbound message {message_id}")
                 continue
 
-            # If this user already has an active lead for this trigger, do not
-            # restart outreach; let poll_conversations handle ongoing replies.
-            open_lead = self.lead_repo.get_open_by_user_and_trigger(
-                account_id=self.account.id,
-                trigger_id=matched_trigger.id,
-                commenter_ig_user_id=from_user_id,
-            )
-            if open_lead:
-                logger.debug(
-                    f"Skipping new lead for @{from_username} on trigger {matched_trigger.id}; "
-                    f"existing open lead #{open_lead.id}"
+            selected_trigger = matched_trigger
+            if selected_trigger is not None:
+                # If this user already has an active lead for this trigger, do not
+                # restart outreach; let poll_conversations handle ongoing replies.
+                open_lead = self.lead_repo.get_open_by_user_and_trigger(
+                    account_id=self.account.id,
+                    trigger_id=selected_trigger.id,
+                    commenter_ig_user_id=from_user_id,
                 )
-                continue
+                if open_lead:
+                    logger.debug(
+                        f"Skipping new lead for @{from_username} on trigger {selected_trigger.id}; "
+                        f"existing open lead #{open_lead.id}"
+                    )
+                    continue
 
-            # Send initial response
-            try:
-                self.messenger.send_message(
-                    from_user_id, matched_trigger.initial_message
+                response_text = selected_trigger.initial_message
+            else:
+                # Keywordless mode: any first inbound DM can start a conversation.
+                # If user already has an open lead, conversation polling will handle it.
+                open_lead_any = self.lead_repo.get_open_by_user(
+                    account_id=self.account.id,
+                    commenter_ig_user_id=from_user_id,
                 )
+                if open_lead_any:
+                    logger.debug(
+                        f"Skipping new keywordless lead for @{from_username}; "
+                        f"existing open lead #{open_lead_any.id}"
+                    )
+                    continue
+
+                selected_trigger = default_trigger
+                seed_history = [
+                    {
+                        "role": "user",
+                        "message": msg_text_raw,
+                        "timestamp": msg.get("created_time", datetime.now(timezone.utc).isoformat()),
+                    }
+                ]
+                try:
+                    response_text = self.lead_responder.generate_reply(
+                        commenter_username=from_username,
+                        conversation_history=seed_history,
+                        post_topic="Inbound DM without keyword trigger",
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"AI initial reply generation failed for @{from_username} "
+                        f"(message {message_id}): {e}"
+                    )
+                    continue
+
+            # Send initial response (keyword-triggered or keywordless AI start)
+            try:
+                self.messenger.send_message(from_user_id, response_text)
                 logger.info(
                     f"Sent initial DM response to @{from_username} (ig_user_id={from_user_id}) "
                     f"for inbound message {message_id}"
@@ -250,7 +284,7 @@ class LeadService:
             # Create lead record (use a placeholder post_media_id since there's no post)
             lead = self.lead_repo.create_lead(
                 account_id=self.account.id,
-                trigger_id=matched_trigger.id,
+                trigger_id=selected_trigger.id,
                 commenter_ig_user_id=from_user_id,
                 commenter_username=from_username,
                 post_instagram_media_id="0",  # Placeholder; inbound DM doesn't have a post
@@ -269,7 +303,7 @@ class LeadService:
                 },
                 {
                     "role": "assistant",
-                    "message": matched_trigger.initial_message,
+                    "message": response_text,
                     "timestamp": now.isoformat(),
                 },
             ]
@@ -280,9 +314,9 @@ class LeadService:
             new_leads += 1
             logger.info(
                 f"Created lead #{lead.id} for @{from_username} "
-                f"(trigger {matched_trigger.id}, inbound message {message_id})"
+                f"(trigger {selected_trigger.id}, inbound message {message_id})"
             )
-            self.notifier.notify_new_lead(lead, matched_trigger)
+            self.notifier.notify_new_lead(lead, selected_trigger)
 
         return new_leads
 

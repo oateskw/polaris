@@ -123,6 +123,31 @@ class LeadRepository(BaseRepository[Lead]):
         )
         return self.session.execute(stmt).scalars().first()
 
+    def get_open_by_user(
+        self,
+        account_id: int,
+        commenter_ig_user_id: str,
+    ) -> Optional[Lead]:
+        """Return latest open lead for a user across all triggers."""
+        stmt = (
+            select(Lead)
+            .where(
+                Lead.account_id == account_id,
+                Lead.commenter_ig_user_id == commenter_ig_user_id,
+                Lead.status.in_(
+                    [
+                        LeadStatus.NEW,
+                        LeadStatus.CONTACTED,
+                        LeadStatus.REPLIED,
+                        LeadStatus.QUALIFIED,
+                    ]
+                ),
+            )
+            .order_by(Lead.updated_at.desc())
+            .limit(1)
+        )
+        return self.session.execute(stmt).scalars().first()
+
     def create_lead(
         self,
         account_id: int,
