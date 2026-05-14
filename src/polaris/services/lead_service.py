@@ -399,11 +399,12 @@ class LeadService:
 
     def _find_thread(self, conversations: list, ig_user_id: str) -> dict | None:
         """Return the conversation thread that involves a given user ID."""
+        target_user_id = str(ig_user_id)
         for conv in conversations:
             messages_data = conv.get("messages", {}).get("data", [])
             for msg in messages_data:
                 from_data = msg.get("from", {})
-                if from_data.get("id") == ig_user_id:
+                if str(from_data.get("id", "")) == target_user_id:
                     return conv
         return None
 
@@ -422,16 +423,19 @@ class LeadService:
         """Extract user messages from a thread that are newer than since_timestamp."""
         messages_data = thread.get("messages", {}).get("data", [])
         result = []
+        target_user_id = str(ig_user_id)
+        since_dt = self._parse_timestamp(since_timestamp)
 
         for msg in messages_data:
             from_data = msg.get("from", {})
             # Only include messages FROM the lead (not from us)
-            if from_data.get("id") != ig_user_id:
+            if str(from_data.get("id", "")) != target_user_id:
                 continue
 
             msg_time = msg.get("created_time", "")
+            msg_dt = self._parse_timestamp(msg_time)
 
-            if since_timestamp and msg_time <= since_timestamp:
+            if since_dt and msg_dt and msg_dt <= since_dt:
                 continue
 
             result.append(
@@ -442,7 +446,31 @@ class LeadService:
             )
 
         # Return in chronological order
-        return sorted(result, key=lambda m: m["timestamp"])
+        return sorted(result, key=lambda m: self._parse_timestamp(m.get("timestamp")) or datetime.min.replace(tzinfo=timezone.utc))
+
+    def _parse_timestamp(self, value: str | None) -> datetime | None:
+        """Best-effort parser for Graph API and ISO timestamps."""
+        if not value:
+            return None
+
+        text = value.strip()
+        try:
+            if text.endswith("Z"):
+                text = text[:-1] + "+00:00"
+            parsed = datetime.fromisoformat(text)
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=timezone.utc)
+            return parsed
+        except ValueError:
+            pass
+
+        # Fallback for Graph format like 2026-05-14T17:42:11+0000
+        for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d %H:%M:%S%z"):
+            try:
+                return datetime.strptime(text, fmt)
+            except ValueError:
+                continue
+        return None
 
     def _build_post_context(self, lead: Any) -> str:
         """Build concise post/trigger context for AI concierge responses."""
