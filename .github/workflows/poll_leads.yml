@@ -24,6 +24,11 @@ jobs:
       - name: Install dependencies
         run: pip install -e . --quiet
 
+      - name: Apply database migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: alembic upgrade head
+
       - name: Check for active triggers
         id: trigger_check
         env:
