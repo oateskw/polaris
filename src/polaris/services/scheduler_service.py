@@ -34,9 +34,7 @@ class SchedulerService:
     def _get_scheduler(self) -> BackgroundScheduler:
         """Get or create the scheduler instance."""
         if self._scheduler is None:
-            jobstores = {
-                "default": MemoryJobStore()
-            }
+            jobstores = {"default": MemoryJobStore()}
 
             self._scheduler = BackgroundScheduler(
                 jobstores=jobstores,
@@ -234,7 +232,7 @@ class SchedulerService:
         logger.error(f"Job {event.job_id} failed: {event.exception}")
 
     def schedule_lead_polling(self, account_id: int) -> None:
-        """Register interval jobs to poll comment triggers and conversations.
+        """Register interval jobs for lead conversation follow-up polling.
 
         Args:
             account_id: The InstagramAccount ID to poll for
@@ -244,20 +242,13 @@ class SchedulerService:
         scheduler = self._get_scheduler()
 
         scheduler.add_job(
-            self._poll_triggers,
-            trigger=IntervalTrigger(minutes=2),
-            args=[account_id],
-            id=f"poll_triggers_{account_id}",
-            replace_existing=True,
-        )
-        scheduler.add_job(
             self._poll_conversations,
             trigger=IntervalTrigger(minutes=3),
             args=[account_id],
             id=f"poll_conversations_{account_id}",
             replace_existing=True,
         )
-        logger.info(f"Lead polling scheduled for account {account_id}")
+        logger.info(f"Conversation polling scheduled for account {account_id}")
 
     def _poll_triggers(self, account_id: int) -> None:
         """APScheduler job: poll comment triggers for new keyword matches."""
@@ -269,13 +260,17 @@ class SchedulerService:
 
             account = session.get(InstagramAccount, account_id)
             if not account or not account.is_active:
-                logger.warning(f"Account {account_id} not found or inactive, skipping trigger poll")
+                logger.warning(
+                    f"Account {account_id} not found or inactive, skipping trigger poll"
+                )
                 return
 
             service = LeadService(session, account)
             new_leads = service.poll_triggers()
             if new_leads:
-                logger.info(f"poll_triggers: {new_leads} new lead(s) for account {account_id}")
+                logger.info(
+                    f"poll_triggers: {new_leads} new lead(s) for account {account_id}"
+                )
         except Exception as e:
             logger.error(f"poll_triggers failed for account {account_id}: {e}")
             session.rollback()
@@ -292,13 +287,17 @@ class SchedulerService:
 
             account = session.get(InstagramAccount, account_id)
             if not account or not account.is_active:
-                logger.warning(f"Account {account_id} not found or inactive, skipping conversation poll")
+                logger.warning(
+                    f"Account {account_id} not found or inactive, skipping conversation poll"
+                )
                 return
 
             service = LeadService(session, account)
             replies = service.poll_conversations()
             if replies:
-                logger.info(f"poll_conversations: {replies} AI reply/replies sent for account {account_id}")
+                logger.info(
+                    f"poll_conversations: {replies} AI reply/replies sent for account {account_id}"
+                )
         except Exception as e:
             logger.error(f"poll_conversations failed for account {account_id}: {e}")
             session.rollback()
