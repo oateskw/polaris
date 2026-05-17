@@ -1,5 +1,5 @@
 """
-Screencast demo for Meta App Review — instagram_business_manage_messages.
+Screencast demo for a new Meta application review — instagram_business_manage_messages.
 
 Demonstrates the full comment-to-DM lead automation pipeline:
   1. A comment trigger is configured on an Instagram post
@@ -11,7 +11,7 @@ Run this while screen recording.
 """
 import sys
 import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 sys.path.insert(0, "src")
 
 import sqlite3

@@ -1,5 +1,5 @@
 """
-Screencast demo for Meta App Review -- instagram_manage_messages permission.
+Screencast demo for a new Meta application review -- instagram_manage_messages permission.
 
 Demonstrates:
 1. How Polaris reads DM conversations on the connected Instagram Business account
@@ -14,7 +14,7 @@ Run this while screen recording.
 """
 import sys
 import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 sys.path.insert(0, "src")
 
 import sqlite3
@@ -72,7 +72,7 @@ from polaris.config import get_settings
 settings = get_settings()
 
 # --------------------------------------------------------------------------
-header("Polaris Innovations -- instagram_manage_messages Demo")
+header("Polaris Innovations -- New App instagram_manage_messages Demo")
 
 print(f"""
   {BOLD}Feature:{RESET}  Comment-to-DM Lead Automation (Messaging API)
@@ -143,15 +143,19 @@ print(f"    {DIM}params: platform=instagram  fields=messages{{id,message,from,cr
 print()
 pause()
 
-r = httpx.get(
+try:
+  r = httpx.get(
     f"https://graph.facebook.com/v18.0/me/conversations",
     params={
-        "platform": "instagram",
-        "fields": "messages{id,message,from,created_time}",
-        "access_token": token,
-    }
-)
-convos = r.json()
+      "platform": "instagram",
+      "fields": "messages{id,message,from,created_time}",
+      "access_token": token,
+    },
+    timeout=30.0,
+  )
+  convos = r.json()
+except Exception as exc:
+  convos = {"error": {"message": f"request failed: {exc}"}}
 
 if "data" in convos and convos["data"]:
     print(f"  {GREEN}Conversations found: {len(convos['data'])}{RESET}\n")
@@ -174,6 +178,13 @@ elif "error" in convos:
   and may also require Advanced Access / App Review approval before
   returning live data. The endpoint and permission are correct --
   full access is granted once App Review is approved.{RESET}
+""")
+    print(f"""
+  {DIM}Expected output in approved/live mode:{RESET}
+
+    Thread ID: aWdf...example
+    Messages:  3
+    Latest:    [2026-05-16] @follower_example: "Can you share pricing?"
 """)
 else:
     print(f"  {DIM}(No active conversations yet){RESET}\n")

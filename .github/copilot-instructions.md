@@ -22,13 +22,14 @@
 ## Meta Review Positioning
 - The lead-generation feature is comment-to-DM, not direct-DM.
 - Do not describe the user journey as "people DM me first"; the required action is a comment on one of my posts.
-- If this feature is resubmitted to Meta, justify the four review permissions in terms of the comment-to-DM flow:
+- If this feature is being submitted in a new Meta application, justify the four review permissions in terms of the comment-to-DM flow:
 	- `pages_show_list`: find the connected Facebook Page and obtain the Page access token used by the app.
 	- `pages_manage_metadata`: resolve the Page's linked Instagram business account so the app knows which IG account to monitor.
 	- `instagram_manage_comments`: read comments on owned posts so keyword comments can trigger the lead workflow.
 	- `instagram_manage_messages`: send the initial private reply/DM and continue the follow-up conversation.
 - Keep the review narrative focused on public comments on owned posts being converted into private DM conversations.
 - Do not frame the feature as a generic inbound DM system unless the task explicitly says to work on inbound DM triggers.
+- Treat this as a fresh application approval path, not a resubmission of an old app.
 
 ## Idempotency Rules
 - Deduplicate comment leads by `comment_id` before creating a new lead.

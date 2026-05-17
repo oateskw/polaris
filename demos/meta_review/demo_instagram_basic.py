@@ -1,18 +1,17 @@
 """
-Screencast demo for Meta App Review -- instagram_basic permission.
+Screencast demo for a new Meta application review -- instagram_basic permission.
 
 Demonstrates:
 1. How Polaris reads the connected Instagram account's profile
-   via the graph.instagram.com endpoint
+  via the graph.facebook.com/v18.0 endpoint
 2. How it reads the account's media list
-3. How instagram_basic and instagram_business_basic work together
-   to cover both API base URLs used by the app
+3. How instagram_basic authorises read endpoints used by Polaris
 
 Run this while screen recording.
 """
 import sys
 import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 sys.path.insert(0, "src")
 
 import sqlite3
@@ -66,8 +65,7 @@ conn.close()
 from polaris.config import get_settings
 settings = get_settings()
 
-BASE_URL  = "https://graph.instagram.com"
-GRAPH_URL = "https://graph.facebook.com/v18.0"
+BASE_URL = "https://graph.facebook.com/v18.0"
 
 # --------------------------------------------------------------------------
 header("Polaris Innovations -- instagram_basic Demo")
@@ -75,14 +73,12 @@ header("Polaris Innovations -- instagram_basic Demo")
 print(f"""
   {BOLD}Feature:{RESET}  Instagram Profile and Media Access
 
-  Polaris uses two distinct base URLs when calling the Instagram
-  Graph API. Each requires its own permission grant:
+  Polaris calls Instagram Graph API endpoints on:
 
-    {CYAN}graph.instagram.com{RESET}          -> {BOLD}instagram_basic{RESET}
-      Profile info and media list via the Instagram-native API
+    {CYAN}graph.facebook.com/v18.0{RESET}
 
-    {CYAN}graph.facebook.com/v18.0{RESET}     -> {BOLD}instagram_business_basic{RESET}
-      Business account features via the Facebook Graph API
+  For this review, {BOLD}instagram_basic{RESET} covers read access used
+  to load the connected account profile and media list.
 
   {BOLD}instagram_basic{RESET} covers two endpoints used throughout Polaris:
 
@@ -95,26 +91,21 @@ print(f"""
 pause(2)
 
 # -- STEP 1: Two base URLs, two permissions --------------------------------
-step(1, "Two Base URLs -- Two Permissions")
+step(1, "Read Endpoints Used by instagram_basic")
 
 print(f"""
-  The Polaris Instagram client defines both base URLs:
+  Polaris reads connected account data through:
 
     {DIM}# src/polaris/services/instagram/client.py{RESET}
-    BASE_URL  = "{CYAN}https://graph.instagram.com{RESET}"
-    GRAPH_URL = "{CYAN}https://graph.facebook.com/v18.0{RESET}"
+    BASE_URL = "{CYAN}https://graph.facebook.com/v18.0{RESET}"
 
-  Calls to {BOLD}BASE_URL{RESET} (graph.instagram.com) require {BOLD}instagram_basic{RESET}.
-  Calls to {BOLD}GRAPH_URL{RESET} (graph.facebook.com) require {BOLD}instagram_business_basic{RESET}.
-
-  Both permissions are requested together during OAuth so that
-  all endpoints across both base URLs are authorised on the
-  same access token.
+  The permission under review here is {BOLD}instagram_basic{RESET},
+  which supports read access for profile and media endpoints.
 """)
 pause(2)
 
-# -- STEP 2: Profile read via graph.instagram.com -------------------------
-step(2, "Reading Account Profile via graph.instagram.com")
+# -- STEP 2: Profile read via graph.facebook ------------------------------
+step(2, "Reading Account Profile via graph.facebook.com")
 
 print(f"""
   When Polaris displays the connected account or checks token
@@ -159,8 +150,8 @@ else:
 
 pause(2)
 
-# -- STEP 3: Media list via graph.instagram.com ---------------------------
-step(3, "Reading Post List via graph.instagram.com")
+# -- STEP 3: Media list via graph.facebook -------------------------------
+step(3, "Reading Post List via graph.facebook.com")
 
 print(f"""
   To build the content list and fetch media IDs for insights,
@@ -209,13 +200,13 @@ pause(2)
 step(4, "Where These Calls Appear in Polaris")
 
 print(f"""
-  {BOLD}get_account_info(){RESET}  ->  GET {BASE_URL}/{{ig_user_id}}
+  {BOLD}get_account_info(){RESET}  ->  GET https://graph.facebook.com/v18.0/{{ig_user_id}}
   Called by:
     polaris accounts list   -> displays username, followers, posts
     polaris status          -> shows connected account at a glance
     polaris accounts refresh -> verifies token is still valid
 
-  {BOLD}get_media(){RESET}  ->  GET {BASE_URL}/{{ig_user_id}}/media
+  {BOLD}get_media(){RESET}  ->  GET https://graph.facebook.com/v18.0/{{ig_user_id}}/media
   Called by:
     polaris analytics fetch -> collects media IDs for insights
     polaris content list    -> cross-references published content
@@ -223,30 +214,20 @@ print(f"""
 """)
 pause(2)
 
-# -- STEP 5: Contrast with instagram_business_basic -----------------------
-step(5, "How instagram_basic and instagram_business_basic Differ")
+# -- STEP 5: Read scope in this app ---------------------------------------
+step(5, "How instagram_basic Is Used in Polaris")
 
 print(f"""
-  Both permissions are requested in the same OAuth flow, but they
-  authorise calls to different hosts:
+  {BOLD}instagram_basic{RESET} is used for read operations that load account
+  and media context in Polaris.
 
-  {BOLD}instagram_basic{RESET}            ->  graph.instagram.com
+  {BOLD}Read endpoints demonstrated in this recording:{RESET}
   ┌─────────────────────────────────────────────────────┐
   │  GET /{{ig_user_id}}          profile fields        │
   │  GET /{{ig_user_id}}/media    post list             │
   └─────────────────────────────────────────────────────┘
 
-  {BOLD}instagram_business_basic{RESET}   ->  graph.facebook.com/v18.0
-  ┌─────────────────────────────────────────────────────┐
-  │  GET /{{ig_user_id}}          full business profile │
-  │  POST /{{ig_user_id}}/media   create container      │
-  │  POST /{{ig_user_id}}/media_publish  publish post   │
-  │  GET /{{ig_user_id}}/insights account-level metrics │
-  └─────────────────────────────────────────────────────┘
-
-  Removing either permission breaks the corresponding set of
-  calls. Together they ensure every API call Polaris makes --
-  across both hosts -- is properly authorised.
+  These are read-only calls and do not create, edit, or delete content.
 """)
 pause(2)
 
@@ -266,7 +247,7 @@ api_call("GET", f"{BASE_URL}/{{ig_user_id}}/media",
          "fields=id,caption,media_type,like_count,comments_count,timestamp")
 
 print(f"""
-  Both calls use the graph.instagram.com base URL.
+  Both calls use the graph.facebook.com/v18.0 base URL.
   Both are read-only. No content is created or modified.
   Data is stored locally in SQLite -- never sent to a backend server.
 """)
@@ -277,28 +258,20 @@ header("Summary")
 print(f"""
   {BOLD}instagram_basic{RESET} allows Polaris to:
 
-    {GREEN}1.{RESET}  Read account profile information via graph.instagram.com:
+    {GREEN}1.{RESET}  Read account profile information via graph.facebook.com/v18.0:
        username, display name, followers, following, post count,
        profile picture URL
        (GET /{ig_user_id})
 
-    {GREEN}2.{RESET}  Read the account's post list via graph.instagram.com:
+    {GREEN}2.{RESET}  Read the account's post list via graph.facebook.com/v18.0:
        media IDs, captions, media type, like/comment counts,
        timestamps
        (GET /{ig_user_id}/media)
 
   {BOLD}Why it cannot be avoided:{RESET}
-    Polaris makes calls to both graph.instagram.com and
-    graph.facebook.com/v18.0. The instagram.com endpoints
-    require instagram_basic; the facebook.com endpoints require
-    instagram_business_basic. Both must be granted on the same
-    token for all features to work.
-
-  {BOLD}Relationship to instagram_business_basic:{RESET}
-    instagram_basic          -> graph.instagram.com  (profile, media)
-    instagram_business_basic -> graph.facebook.com   (publish, insights,
-                                                       comments, messages)
-    Together they authorise the full set of API calls in Polaris.
+    Polaris needs this permission to read profile and media data
+    for the connected Instagram business account before running
+    analytics and lead automation workflows.
 
   All profile and media data is stored locally in SQLite.
   Polaris has no backend server. No data is shared externally.

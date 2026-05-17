@@ -1,5 +1,5 @@
 """
-Screencast demo for Meta App Review — instagram_business_basic permission.
+Screencast demo for a new Meta application review — instagram_business_basic permission.
 
 Demonstrates:
 1. How an Instagram professional account connects to Polaris via OAuth
@@ -10,7 +10,7 @@ Run this while screen recording.
 """
 import sys
 import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 sys.path.insert(0, "src")
 
 import sqlite3

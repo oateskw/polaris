@@ -1,8 +1,8 @@
 """
-Screencast demo for Meta App Review -- business_management permission.
+Screencast demo for a new Meta application review -- business_management permission.
 
 Demonstrates:
-1. How Polaris fetches per-post insights (impressions, reach, saves, shares)
+1. How Polaris fetches per-post insights (reach, saves, shares)
    from Instagram Business accounts managed through Business Manager
 2. How account-level insights are retrieved and stored
 3. The analytics dashboard these metrics power
@@ -11,7 +11,7 @@ Run this while screen recording.
 """
 import sys
 import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 sys.path.insert(0, "src")
 
 import sqlite3
@@ -85,7 +85,7 @@ print(f"""
   permission in addition to instagram_manage_insights.
 
   {BOLD}Metrics collected per post:{RESET}
-    impressions, reach, saves, shares
+    reach, saves, shares
     (likes and comments are returned by the media endpoint)
 
   {BOLD}Permission used:{RESET}
@@ -173,7 +173,7 @@ print(f"""
 api_call(
     "GET",
     "/v18.0/{media_id}/insights",
-    "metric=impressions,reach,saved,shares  (business_management)"
+  "metric=reach,saved,shares  (business_management)"
 )
 print()
 pause()
@@ -185,7 +185,7 @@ if media_list:
     r2 = httpx.get(
         f"https://graph.facebook.com/v18.0/{sample_id}/insights",
         params={
-            "metric": "impressions,reach,saved,shares",
+          "metric": "reach,saved,shares",
             "access_token": token,
         }
     )
@@ -288,13 +288,13 @@ print(f"""
   {BOLD}1. Per-post engagement insights:{RESET}
 """)
 api_call("GET", "/v18.0/{media_id}/insights",
-         "metric=impressions,reach,saved,shares")
+         "metric=reach,saved,shares")
 
 print(f"""
   {BOLD}2. Account-level insights (follower growth, reach trends):{RESET}
 """)
 api_call("GET", f"/v18.0/{ig_user_id}/insights",
-         "metric=impressions,reach,follower_count  period=day")
+         "metric=reach,follower_count  period=day")
 
 print(f"""
   Both calls are made during  {BOLD}polaris analytics fetch{RESET}.
@@ -314,7 +314,7 @@ print(f"""
     {GREEN}1.{RESET}  Read per-post insights on Instagram Business accounts
        managed through Business Manager:
        GET /{{media_id}}/insights
-       (impressions, reach, saves, shares)
+      (reach, saves, shares)
 
     {GREEN}2.{RESET}  Read account-level insights for follower growth
        and overall reach trends:

@@ -1,5 +1,5 @@
 """
-Screencast demo for Meta App Review -- pages_read_engagement permission.
+Screencast demo for a new Meta application review -- pages_read_engagement permission.
 
 Demonstrates:
 1. How pages_read_engagement enables reading like_count and comments_count
@@ -11,7 +11,7 @@ Run this while screen recording.
 """
 import sys
 import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 sys.path.insert(0, "src")
 
 import sqlite3

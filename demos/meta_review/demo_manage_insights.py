@@ -1,8 +1,8 @@
 """
-Screencast demo for Meta App Review -- instagram_manage_insights permission.
+Screencast demo for a new Meta application review -- instagram_manage_insights permission.
 
 Demonstrates:
-1. How Polaris fetches per-post insights (impressions, reach, saved, shares)
+1. How Polaris fetches per-post insights (reach, saved, shares)
 2. How account-level insights are retrieved (follower_count, reach trends)
 3. How all of this powers the polaris analytics dashboard
 
@@ -10,7 +10,7 @@ Run this while screen recording.
 """
 import sys
 import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 sys.path.insert(0, "src")
 
 import sqlite3
@@ -79,10 +79,10 @@ print(f"""
 
   {BOLD}Two levels of insights are collected:{RESET}
 
-    Per-post:    impressions, reach, saved, shares
+    Per-post:    reach, saved, shares
                  (GET /{{media_id}}/insights)
 
-    Account:     impressions, reach, follower_count over time
+    Account:     reach, follower_count over time
                  (GET /{{ig_user_id}}/insights)
 
   These power the  {BOLD}polaris analytics{RESET}  command group.
@@ -131,7 +131,7 @@ for m in media_list:
 pause(2)
 
 # -- STEP 2: Per-post insights call ---------------------------------------
-step(2, "Per-Post Insights: impressions, reach, saved, shares")
+step(2, "Per-Post Insights: reach, saved, shares")
 
 print(f"""
   For each post Polaris calls:
@@ -140,7 +140,7 @@ pause()
 
 api_call("GET", "/v18.0/{media_id}/insights",
          "instagram_manage_insights")
-print(f"    {DIM}metric=impressions,reach,saved,shares{RESET}")
+print(f"    {DIM}metric=reach,saved,shares{RESET}")
 print()
 pause()
 
@@ -152,8 +152,8 @@ if sample_media_id:
     r2 = httpx.get(
         f"https://graph.facebook.com/v18.0/{sample_media_id}/insights",
         params={
-            "metric": "impressions,reach,saved,shares",
-            "access_token": token,
+          "metric": "reach,saved,shares",
+          "access_token": token,
         }
     )
     resp = r2.json()
@@ -186,14 +186,14 @@ pause()
 
 api_call("GET", f"/v18.0/{ig_user_id}/insights",
          "instagram_manage_insights")
-print(f"    {DIM}metric=impressions,reach,follower_count  period=day{RESET}")
+print(f"    {DIM}metric=reach,follower_count  period=day{RESET}")
 print()
 pause()
 
 r3 = httpx.get(
     f"https://graph.facebook.com/v18.0/{ig_user_id}/insights",
     params={
-        "metric": "impressions,reach,follower_count",
+        "metric": "reach,follower_count",
         "period": "day",
         "access_token": token,
     }
@@ -227,7 +227,6 @@ print(f"""
     {CYAN}engagement_metrics{RESET} table (SQLite)
 
     Column            Source
-    impressions    <- GET /{{media_id}}/insights  metric=impressions
     reach          <- GET /{{media_id}}/insights  metric=reach
     saves          <- GET /{{media_id}}/insights  metric=saved
     shares         <- GET /{{media_id}}/insights  metric=shares
@@ -235,7 +234,7 @@ print(f"""
     comments       <- GET /{{ig_user_id}}/media   field=comments_count
 
   The last two come from pages_read_engagement (separate permission).
-  The first four require instagram_manage_insights.
+  The first three require instagram_manage_insights.
 """)
 pause()
 
@@ -264,24 +263,23 @@ print(f"""
 
   {BOLD}polaris analytics report{RESET}
     30-day engagement summary with totals and per-post averages.
-    Impressions and reach totals come directly from the insights
+    Reach totals come directly from the insights
     fetched via instagram_manage_insights.
 
   {BOLD}polaris analytics top --metric reach{RESET}
-    Ranks posts by any metric. Reach and impressions rankings
+    Ranks posts by any metric. Reach rankings
     are only possible because instagram_manage_insights provides
     them (they are not available on the media object itself).
 
   {BOLD}polaris analytics history <media_id>{RESET}
     Shows the trend for a single post across multiple fetch
-    snapshots, tracking how reach and impressions change over
+    snapshots, tracking how reach changes over
     time after publication.
 """)
 pause()
 
 print(f"""  Example output from  {BOLD}polaris analytics report{RESET}:\n
     Engagement Summary (30 days)
-      Total Impressions:  {GREEN}42,830{RESET}     <- from instagram_manage_insights
       Total Reach:        {GREEN}28,460{RESET}     <- from instagram_manage_insights
       Total Likes:         1,204      <- from pages_read_engagement
       Total Comments:        187      <- from pages_read_engagement
@@ -298,13 +296,13 @@ print(f"""
   {BOLD}1. Per-post insights:{RESET}
 """)
 api_call("GET", "/v18.0/{media_id}/insights",
-         "metric=impressions,reach,saved,shares")
+         "metric=reach,saved,shares")
 
 print(f"""
   {BOLD}2. Account-level insights:{RESET}
 """)
 api_call("GET", f"/v18.0/{ig_user_id}/insights",
-         "metric=impressions,reach,follower_count  period=day")
+         "metric=reach,follower_count  period=day")
 
 print(f"""
   Both are called during  polaris analytics fetch --account <id>.
@@ -319,22 +317,22 @@ print(f"""
   {BOLD}instagram_manage_insights{RESET} allows Polaris to:
 
     {GREEN}1.{RESET}  Read per-post engagement insights:
-       impressions, reach, saves, shares
+      reach, saves, shares
        (GET /{{media_id}}/insights)
 
     {GREEN}2.{RESET}  Read account-level trend insights:
-       daily impressions, reach, and follower growth
+      daily reach and follower growth
        (GET /{{ig_user_id}}/insights)
 
   {BOLD}Why it cannot be avoided:{RESET}
-    Impressions, reach, saves, and shares are not available on
+    Reach, saves, and shares are not available on
     the media object itself -- they are only accessible via the
     dedicated insights endpoint, which requires this permission.
-    Without it the analytics dashboard is missing its four most
+    Without it the analytics dashboard is missing its core
     meaningful content performance metrics.
 
   {BOLD}Relationship to other permissions:{RESET}
-    instagram_manage_insights -> impressions, reach, saves, shares
+    instagram_manage_insights -> reach, saves, shares
     pages_read_engagement     -> likes, comments_count
     Together they provide a complete engagement picture per post.
 

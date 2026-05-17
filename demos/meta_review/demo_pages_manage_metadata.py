@@ -1,5 +1,5 @@
 """
-Screencast demo for Meta App Review -- pages_manage_metadata permission.
+Screencast demo for a new Meta application review -- pages_manage_metadata permission.
 
 Demonstrates:
 1. How Polaris reads the instagram_business_account field on a Facebook Page
@@ -11,7 +11,7 @@ Run this while screen recording.
 """
 import sys
 import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 sys.path.insert(0, "src")
 
 import sqlite3
@@ -61,7 +61,7 @@ from polaris.config import get_settings
 settings = get_settings()
 
 # --------------------------------------------------------------------------
-header("Polaris Innovations -- pages_manage_metadata Demo")
+header("Polaris Innovations -- New App pages_manage_metadata Demo")
 
 print(f"""
   {BOLD}Feature:{RESET}  Instagram Business Account Discovery (Page Metadata)
